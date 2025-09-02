@@ -31,7 +31,6 @@
         left: 100px;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
-        transition: width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease;
       }
 
       .nine-slice-box {
@@ -252,9 +251,6 @@
         // Bring to front when maximizing/restoring
         bringToFront(note);
 
-        // Add class to enable transitions
-        note.classList.add('maximizing');
-
         if (originalDimensions.has(noteId)) {
           // Restore to original size
           const { width, height, top, left } = originalDimensions.get(noteId);
@@ -281,11 +277,6 @@
           note.style.top = `${margin}px`;
           note.style.left = `${margin}px`;
         }
-
-        // Remove the transition class after animation completes
-        setTimeout(() => {
-          note.classList.remove('maximizing');
-        }, 300); // Match this with the transition duration
       }
 
       function initNoteEventListeners(note) {
@@ -553,23 +544,13 @@
         .note-close {
           animation: noteClose 0.2s ease-in forwards;
         }
-        
-        /* Add transition for smooth maximize/restore effect */
-        .nine-slice-container {
-          transition: width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease;
-        }
-        
-        /* Add a class for when the transition is active */
-        .maximizing {
-          transition: width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease;
-        }
       `;
       document.head.appendChild(animationStyles);
 
       // Store a copy of the template when the page loads
       let noteTemplate;
 
-      document.addEventListener("DOMContentLoaded", function () {
+      document.addEventListener("DOMContentLoaded", function() {
         // Store a deep clone of the original note template for future use
         noteTemplate = document.getElementById("draggable-box").cloneNode(true);
       });
@@ -577,8 +558,7 @@
       // Fix the createNewNote function to use the stored template
       function createNewNote() {
         // If the original template was deleted, use our stored copy
-        const templateToUse =
-          document.getElementById("draggable-box") || noteTemplate;
+        const templateToUse = document.getElementById("draggable-box") || noteTemplate;
         const newNote = templateToUse.cloneNode(true);
 
         // Generate a unique ID for the new note
@@ -606,8 +586,7 @@
           textarea.value = "";
 
           // Apply font directly to the element - make sure it overrides any other styles
-          textarea.style.fontFamily =
-            '"Pixelify Sans", "Comic Sans MS", cursive, sans-serif';
+          textarea.style.fontFamily = '"Pixelify Sans", "Comic Sans MS", cursive, sans-serif';
           textarea.style.fontSize = "14px";
 
           // Also focus the textarea when clicking on it (for better usability)
