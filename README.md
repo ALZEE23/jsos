@@ -1,2 +1,4 @@
 ## project vibe coding aja
-![Screenshot of a comment on a GitHub issue showing an image, added in the Markdown, of an Octocat smiling and raising a tentacle.](jsos/)
+![cool.](./Video_2025-09-03_02-22-51.gif)
+
+you can resize, move it, & double click to zoom in/out
