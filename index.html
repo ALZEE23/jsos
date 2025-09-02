@@ -244,16 +244,37 @@
       // Store original dimensions when maximizing
       const originalDimensions = new Map();
 
-      // Function to toggle maximize/restore
+      // Modify the transition settings to fix the sluggish drag and resize feel
+      const fixTransitionStyles = document.createElement("style");
+      fixTransitionStyles.textContent = `
+        /* Override the previous transition settings */
+        .nine-slice-container {
+          /* Only apply transitions when maximizing/restoring, not during dragging or resizing */
+          transition: none;
+        }
+        
+        /* Add a specific class for transitions only during maximize/restore */
+        .transitioning {
+          transition: width 0.3s ease-in-out, height 0.3s ease-in-out, top 0.3s ease-in-out, left 0.3s ease-in-out;
+        }
+      `;
+      document.head.appendChild(fixTransitionStyles);
+
+      // Function to toggle maximize/restore with smooth animation
       function toggleMaximize(note) {
         const noteId = note.id;
 
         // Bring to front when maximizing/restoring
         bringToFront(note);
 
+        // Add transition class before making changes
+        note.classList.add("transitioning");
+
         if (originalDimensions.has(noteId)) {
-          // Restore to original size
+          // Restore to original size with animation
           const { width, height, top, left } = originalDimensions.get(noteId);
+
+          // Apply the transition
           note.style.width = width;
           note.style.height = height;
           note.style.top = top;
@@ -261,6 +282,12 @@
 
           // Remove from storage
           originalDimensions.delete(noteId);
+
+          // Find and update title if needed
+          const titleBar = note.querySelector('[id^="drag-handle"]');
+          if (titleBar) {
+            titleBar.innerHTML = `<span class="title-text">Sticky Note</span>`;
+          }
         } else {
           // Save current dimensions
           originalDimensions.set(noteId, {
@@ -272,11 +299,28 @@
 
           // Set to maximized size with margins
           const margin = 40; // Keep a small margin from the window edge
+
+          // Apply the transition
           note.style.width = `${window.innerWidth - margin * 2}px`;
           note.style.height = `${window.innerHeight - margin * 2}px`;
           note.style.top = `${margin}px`;
           note.style.left = `${margin}px`;
+
+          // Find and update title if needed
+          const titleBar = note.querySelector('[id^="drag-handle"]');
+          if (titleBar) {
+            titleBar.innerHTML = `<span class="title-text">Sticky Note (Maximized)</span>`;
+          }
         }
+
+        // Add a visual feedback animation
+        note.classList.add("maximizing");
+
+        // Remove transition and effect classes after animation completes
+        setTimeout(() => {
+          note.classList.remove("maximizing");
+          note.classList.remove("transitioning");
+        }, 300); // Match with transition duration
       }
 
       function initNoteEventListeners(note) {
@@ -329,7 +373,7 @@
         setupResize(note);
       }
 
-      // Modify the setupDrag function to bring note to front on click
+      // Modify the setupDrag function to disable transitions during dragging
       function setupDrag(element) {
         let pos1 = 0,
           pos2 = 0,
@@ -338,8 +382,13 @@
         const dragHandle = element.querySelector('[id^="drag-handle"]');
 
         // Add click handler to bring note to front when clicked anywhere on it
-        element.addEventListener("mousedown", function () {
-          bringToFront(element);
+        element.addEventListener("mousedown", function (e) {
+          if (
+            !e.target.closest(".sticky-textarea") &&
+            !e.target.closest(".control-button")
+          ) {
+            bringToFront(element);
+          }
         });
 
         if (dragHandle) {
@@ -349,11 +398,22 @@
         }
 
         function dragMouseDown(e) {
+          if (
+            e.target.closest(".sticky-textarea") ||
+            e.target.closest(".control-button")
+          ) {
+            // Don't start drag on textarea or buttons
+            return;
+          }
+
           e = e || window.event;
           e.preventDefault();
 
           // Bring note to front when starting to drag
           bringToFront(element);
+
+          // Temporarily disable all transitions during drag
+          element.classList.remove("transitioning");
 
           pos3 = e.clientX;
           pos4 = e.clientY;
@@ -400,7 +460,7 @@
         }
       }
 
-      // Create separate resize function for each note
+      // Modify setupResize to disable transitions during resizing
       function setupResize(element) {
         // Set up resize handlers for each direction
         const directions = ["n", "e", "s", "w", "ne", "se", "sw", "nw"];
@@ -416,6 +476,10 @@
 
         function resizeStart(e, direction) {
           e.preventDefault();
+
+          // Disable transitions during resize
+          element.classList.remove("transitioning");
+
           startX = e.clientX;
           startY = e.clientY;
           startWidth = element.offsetWidth;
@@ -547,10 +611,25 @@
       `;
       document.head.appendChild(animationStyles);
 
+      // Add this CSS class for additional visual feedback during the maximize transition
+      const additionalStyles = document.createElement("style");
+      additionalStyles.textContent = `
+        .maximizing {
+          box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        @keyframes maximize-pulse {
+          0% { box-shadow: 0 0 0 rgba(0,0,0,0.1); }
+          50% { box-shadow: 0 0 20px rgba(0,0,0,0.3); }
+          100% { box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        }
+      `;
+      document.head.appendChild(additionalStyles);
+
       // Store a copy of the template when the page loads
       let noteTemplate;
 
-      document.addEventListener("DOMContentLoaded", function() {
+      document.addEventListener("DOMContentLoaded", function () {
         // Store a deep clone of the original note template for future use
         noteTemplate = document.getElementById("draggable-box").cloneNode(true);
       });
@@ -558,7 +637,8 @@
       // Fix the createNewNote function to use the stored template
       function createNewNote() {
         // If the original template was deleted, use our stored copy
-        const templateToUse = document.getElementById("draggable-box") || noteTemplate;
+        const templateToUse =
+          document.getElementById("draggable-box") || noteTemplate;
         const newNote = templateToUse.cloneNode(true);
 
         // Generate a unique ID for the new note
@@ -586,7 +666,8 @@
           textarea.value = "";
 
           // Apply font directly to the element - make sure it overrides any other styles
-          textarea.style.fontFamily = '"Pixelify Sans", "Comic Sans MS", cursive, sans-serif';
+          textarea.style.fontFamily =
+            '"Pixelify Sans", "Comic Sans MS", cursive, sans-serif';
           textarea.style.fontSize = "14px";
 
           // Also focus the textarea when clicking on it (for better usability)
