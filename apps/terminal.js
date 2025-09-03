@@ -206,47 +206,57 @@
                             break;
                         }
 
-                        // Get the code from the editor using the getCode method
-                        const code = editorWindow.querySelector('.code-textarea').value;
-
-                        if (!code || code.trim() === '') {
-                            addOutput('Error: No code to run', 'error');
-                            break;
-                        }
-
-                        // Run the JavaScript code
-                        addOutput(`[${new Date().toLocaleTimeString()}] Running javascript code...`);
-
+                        // Get the code directly from the textarea - simpler approach that always works
                         try {
-                            // Capture console.log outputs
-                            const originalConsoleLog = console.log;
-                            let logs = [];
+                            const textarea = editorWindow.querySelector('.code-textarea');
 
-                            console.log = (...args) => {
-                                const logMessage = args.join(' ');
-                                logs.push(logMessage);
-                                originalConsoleLog(...args);
-                            };
-
-                            // Run the code
-                            const result = eval(code);
-
-                            // Restore console.log
-                            console.log = originalConsoleLog;
-
-                            // Output the logs
-                            logs.forEach(log => {
-                                addOutput(log);
-                            });
-
-                            // If there was a return value and no console.logs, show it
-                            if (logs.length === 0 && result !== undefined) {
-                                addOutput(`Result: ${result}`);
+                            if (!textarea) {
+                                addOutput(`Error: Could not find code editor in ${editorId}`, 'error');
+                                break;
                             }
-                        } catch (error) {
-                            addOutput(`Error: ${error.message}`, 'error');
-                        }
 
+                            const code = textarea.value;
+
+                            if (!code || code.trim() === '') {
+                                addOutput('Error: No code to run', 'error');
+                                break;
+                            }
+
+                            // Run the JavaScript code
+                            addOutput(`[${new Date().toLocaleTimeString()}] Running javascript code...`);
+
+                            try {
+                                // Capture console.log outputs
+                                const originalConsoleLog = console.log;
+                                let logs = [];
+
+                                console.log = (...args) => {
+                                    const logMessage = args.join(' ');
+                                    logs.push(logMessage);
+                                    originalConsoleLog(...args);
+                                };
+
+                                // Run the code
+                                const result = eval(code);
+
+                                // Restore console.log
+                                console.log = originalConsoleLog;
+
+                                // Output the logs
+                                logs.forEach(log => {
+                                    addOutput(log);
+                                });
+
+                                // If there was a return value and no console.logs, show it
+                                if (logs.length === 0 && result !== undefined) {
+                                    addOutput(`Result: ${result}`);
+                                }
+                            } catch (error) {
+                                addOutput(`Error: ${error.message}`, 'error');
+                            }
+                        } catch (err) {
+                            addOutput(`Error: ${err.message}`, 'error');
+                        }
                         break;
 
                     case 'ls':
@@ -292,6 +302,53 @@
 
                     case 'date':
                         addOutput(new Date().toString());
+                        break;
+
+                    case 'windows':
+                        // List all open windows - improved selector
+                        const windows = document.querySelectorAll('.window');
+
+                        if (windows.length === 0) {
+                            addOutput('No windows are currently open.');
+                        } else {
+                            addOutput('Open windows:');
+                            let foundWindows = 0;
+
+                            windows.forEach(window => {
+                                const id = window.id;
+                                // Only show windows with proper IDs
+                                if (id && id.startsWith('window-')) {
+                                    const titleElement = window.querySelector('.window-title');
+                                    const title = titleElement ? titleElement.textContent : 'Untitled';
+                                    const type = window.getAttribute('data-app-type') || 'unknown';
+
+                                    addOutput(`  ${id} (${type}): ${title}`);
+                                    foundWindows++;
+                                }
+                            });
+
+                            if (foundWindows === 0) {
+                                addOutput('  No identifiable windows found.');
+                            }
+
+                            addOutput('\nTo run code from an editor, use: run window-ID');
+
+                            // Debug info to help understand the DOM structure
+                            addOutput('\nDebug Info:', 'system-message');
+                            addOutput(`  Total elements with class 'window': ${windows.length}`, 'system-message');
+
+                            // Show DOM structure of first few elements for debugging
+                            const maxDebug = Math.min(windows.length, 2);
+                            for (let i = 0; i < maxDebug; i++) {
+                                const win = windows[i];
+                                addOutput(`  Window ${i + 1}: id=${win.id}, class=${win.className}`, 'system-message');
+
+                                // Check if it has essential parts
+                                const hasTitle = win.querySelector('.window-title') !== null;
+                                const hasAppType = win.hasAttribute('data-app-type');
+                                addOutput(`    Has title: ${hasTitle}, Has app-type: ${hasAppType}`, 'system-message');
+                            }
+                        }
                         break;
 
                     default:

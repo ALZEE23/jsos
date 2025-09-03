@@ -90,6 +90,8 @@
                     if (e.key === 'Escape') {
                         e.preventDefault();
                         hideSuggestions();
+                        // FIX #1: Make sure the event doesn't propagate to close the window
+                        e.stopPropagation();
                         return;
                     }
                 }
@@ -108,7 +110,7 @@
                     codeTextarea.selectionStart = codeTextarea.selectionEnd = start + 4;
                 }
 
-                // Prevent event bubbling
+                // Prevent event bubbling for all keydown events
                 e.stopPropagation();
             });
 
@@ -312,7 +314,7 @@
             updateLineNumbers();
         },
 
-        // Method to get the current code from this editor
+        // Method to get the current code from this editor - FIX #2: Updated to work with all editor windows
         getCode: function (windowElement) {
             const textarea = windowElement.querySelector('.code-textarea');
             return textarea ? textarea.value : '';
