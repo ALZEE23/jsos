@@ -1,6 +1,9 @@
 (function () {
     WindowManager.registerWindowType('code-editor', {
-        title: 'Code Editor',
+        title: function (options) {
+            // Use the file path for the title if available
+            return options && options.filePath ? options.filePath.split('/').pop() : 'Untitled';
+        },
         defaultWidth: 500,
         defaultHeight: 400,
 
@@ -11,7 +14,7 @@
                 return;
             }
 
-            // Create a simpler code editor layout with minimal elements
+            // Create a simpler code editor layout without the save button and title bar
             innerContent.innerHTML = `
                 <div class="code-editor-container">
                     <div class="line-numbers"></div>
@@ -24,6 +27,9 @@
             const codeTextarea = innerContent.querySelector('.code-textarea');
             const lineNumbers = innerContent.querySelector('.line-numbers');
             const suggestionsContainer = innerContent.querySelector('.suggestions-container');
+
+            // Store the file path for saving
+            const filePath = options.filePath;
 
             // Set initial content if provided
             if (options.code) {
@@ -73,6 +79,21 @@
             });
 
             codeTextarea.addEventListener('keydown', (e) => {
+                // Save on Ctrl+S / Cmd+S
+                if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+
+                    if (filePath) {
+                        // If we already have a file path, save directly
+                        saveFile(filePath, codeTextarea.value);
+                    } else {
+                        // Ask for a file name and path
+                        showSaveDialog(codeTextarea.value);
+                    }
+
+                    return;
+                }
+
                 // Handle suggestion selection with arrow keys
                 if (suggestionsContainer.style.display !== 'none') {
                     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -90,7 +111,7 @@
                     if (e.key === 'Escape') {
                         e.preventDefault();
                         hideSuggestions();
-                        // FIX #1: Make sure the event doesn't propagate to close the window
+                        // Make sure the event doesn't propagate to close the window
                         e.stopPropagation();
                         return;
                     }
@@ -117,6 +138,89 @@
             codeTextarea.addEventListener('mousedown', (e) => {
                 e.stopPropagation(); // Prevent window drag
             });
+
+            // Function to show save dialog
+            function showSaveDialog(content) {
+                // Create a simple save dialog
+                const saveDialog = document.createElement('div');
+                saveDialog.className = 'save-dialog';
+                saveDialog.innerHTML = `
+                    <div class="save-dialog-content">
+                        <h2>Save File</h2>
+                        <div class="input-group">
+                            <label for="save-path">File path:</label>
+                            <input type="text" id="save-path" value="/home/user/Documents/untitled.js">
+                        </div>
+                        <div class="dialog-buttons">
+                            <button class="save-confirm">Save</button>
+                            <button class="save-cancel">Cancel</button>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(saveDialog);
+
+                // Focus the input
+                const pathInput = saveDialog.querySelector('#save-path');
+                pathInput.focus();
+                pathInput.setSelectionRange(pathInput.value.lastIndexOf('/') + 1, pathInput.value.length);
+
+                // Handle buttons
+                saveDialog.querySelector('.save-confirm').addEventListener('click', () => {
+                    const path = pathInput.value;
+                    saveFile(path, content);
+                    saveDialog.remove();
+                });
+
+                saveDialog.querySelector('.save-cancel').addEventListener('click', () => {
+                    saveDialog.remove();
+                });
+            }
+
+            // Function to save file
+            function saveFile(path, content) {
+                try {
+                    // Use the FileSystem to save the file
+                    if (window.FileSystem) {
+                        FileSystem.writeFile(path, content);
+
+                        // Update the window title with the new file name
+                        const windowElement = contentElement.closest('.window');
+                        if (windowElement) {
+                            const titleElement = windowElement.querySelector('.window-title');
+                            if (titleElement) {
+                                const fileName = path.split('/').pop();
+                                titleElement.textContent = fileName;
+                            }
+                        }
+
+                        // Update the stored file path
+                        options.filePath = path;
+
+                        // Show a success message
+                        showNotification(`File saved: ${path}`);
+                    } else {
+                        showNotification('FileSystem not available', 'error');
+                    }
+                } catch (error) {
+                    showNotification(`Error saving file: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to show a notification
+            function showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                notification.textContent = message;
+
+                document.body.appendChild(notification);
+
+                // Remove after a delay
+                setTimeout(() => {
+                    notification.style.opacity = '0';
+                    setTimeout(() => notification.remove(), 300);
+                }, 2000);
+            }
 
             // Function to update line numbers
             function updateLineNumbers() {
@@ -314,7 +418,7 @@
             updateLineNumbers();
         },
 
-        // Method to get the current code from this editor - FIX #2: Updated to work with all editor windows
+        // Method to get the current code from this editor
         getCode: function (windowElement) {
             const textarea = windowElement.querySelector('.code-textarea');
             return textarea ? textarea.value : '';

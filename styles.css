@@ -759,3 +759,128 @@ body {
 .suggestion-item.selected {
   background-color: #e0e0e0;
 }
+
+/* Add these styles for file system and editor toolbar */
+
+.editor-toolbar {
+    display: flex;
+    padding: 5px 10px;
+    background-color: rgba(0,0,0,0.05);
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-path {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.save-button {
+    background: #ccc;
+    border: none;
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.save-button:hover {
+    background: #bbb;
+}
+
+/* Terminal file listing colors */
+.terminal-line .directory {
+    color: #4d88ff;
+    font-weight: bold;
+}
+
+.terminal-line .executable {
+    color: #2cb300;
+    font-weight: bold;
+}
+
+/* Add these styles for file system, notifications and save dialog */
+
+/* Save dialog */
+.save-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.save-dialog-content {
+    background: #fff1e8;
+    border: 3px solid #666;
+    border-radius: 10px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90%;
+}
+
+.save-dialog h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.dialog-buttons button {
+    padding: 5px 15px;
+    cursor: pointer;
+}
+
+/* Notification */
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    background: #f0f0f0;
+    border-left: 4px solid #4CAF50;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 10000;
+    transition: opacity 0.3s ease;
+    max-width: 300px;
+}
+
+.notification.error {
+    border-left-color: #f44336;
+}
+
+.notification.info {
+    border-left-color: #2196F3;
+}
