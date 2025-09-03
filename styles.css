@@ -1,0 +1,234 @@
+body {
+  background: #1a1a1a;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  font-family: sans-serif;
+}
+
+.boldonse-regular {
+  font-family: "Boldonse", system-ui;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.nine-slice-container {
+  position: absolute;
+  width: 300px;
+  height: 200px;
+  top: 100px;
+  left: 100px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  /* Remove default transitions */
+  transition: none;
+}
+
+.nine-slice-box {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-width: 20px;
+  border-style: solid;
+  border-image: url("Frame-export.png") 30 fill repeat;
+  box-sizing: border-box;
+}
+
+.title-bar {
+  position: absolute;
+  top: 0;
+  left: 15px;
+  right: 15px;
+  height: 30px;
+  cursor: move;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-weight: bold;
+  user-select: none; /* Prevent text selection while dragging */
+}
+
+/* Add hover effect to indicate interactive element */
+.title-bar:hover {
+  /* background-color: rgba(0, 0, 0, 0.1); */
+}
+
+/* Add this to show the title text */
+.title-text {
+  flex: 1;
+}
+
+.content {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  right: 15px;
+  bottom: 15px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sticky-textarea {
+  flex: 1;
+  margin-top: 30px; /* Space for title bar */
+  border: none;
+  outline: none;
+  background-color: #fff1e8; /* Light sticky note color */
+  color: #333;
+  font-family: "Pixelify Sans", "Comic Sans MS", cursive, sans-serif !important; /* Sticky note font */
+  font-size: 14px;
+  padding: 8px;
+  resize: none;
+  overflow: auto;
+}
+
+.note-controls {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.control-button {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+.control-button:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Resize handles */
+.resize-handle {
+  position: absolute;
+  z-index: 20;
+}
+
+.resize-handle-n {
+  top: 0;
+  left: 15px;
+  right: 15px;
+  height: 6px;
+  cursor: n-resize;
+}
+
+.resize-handle-e {
+  top: 15px;
+  right: 0;
+  bottom: 15px;
+  width: 6px;
+  cursor: e-resize;
+}
+
+.resize-handle-s {
+  bottom: 0;
+  left: 15px;
+  right: 15px;
+  height: 6px;
+  cursor: s-resize;
+}
+
+.resize-handle-w {
+  top: 15px;
+  left: 0;
+  bottom: 15px;
+  width: 6px;
+  cursor: w-resize;
+}
+
+/* Corner resize handles */
+.resize-handle-ne {
+  top: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+  cursor: ne-resize;
+}
+
+.resize-handle-se {
+  bottom: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+  cursor: se-resize;
+}
+
+.resize-handle-sw {
+  bottom: 0;
+  left: 0;
+  width: 15px;
+  height: 15px;
+  cursor: sw-resize;
+}
+
+.resize-handle-nw {
+  top: 0;
+  left: 0;
+  width: 15px;
+  height: 15px;
+  cursor: nw-resize;
+}
+
+/* Animations */
+@keyframes noteAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.note-appear {
+  animation: noteAppear 0.3s ease-out forwards;
+}
+
+@keyframes noteClose {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+.note-close {
+  animation: noteClose 0.2s ease-in forwards;
+}
+
+/* Transition for maximize/restore */
+.transitioning {
+  transition: width 0.3s ease-in-out, height 0.3s ease-in-out, top 0.3s ease-in-out, left 0.3s ease-in-out;
+}
+
+/* Visual feedback during maximize */
+.maximizing {
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+@keyframes maximize-pulse {
+  0% { box-shadow: 0 0 0 rgba(0,0,0,0.1); }
+  50% { box-shadow: 0 0 20px rgba(0,0,0,0.3); }
+  100% { box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+}
