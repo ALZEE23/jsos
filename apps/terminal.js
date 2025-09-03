@@ -188,8 +188,9 @@
   chmod +x|-x <f> - Make file executable (+x) or not (-x)
   reset-fs        - Reset file system to default state (CAUTION!)
   
-  # Other Commands
-  run <editor-id> - Run code from a specific editor window
+  # Execution Commands
+  run <file.js>   - Run a JavaScript file from the filesystem
+  run <window-id> - Run code from a specific editor window
   windows         - List all open windows with IDs
   date            - Show current date and time`);
                         break;
@@ -204,75 +205,173 @@
 
                     case 'run':
                         if (args.length === 0) {
-                            addOutput('Usage: run <editor-id>\nExample: run window-0', 'error');
+                            addOutput('Usage: run <file.js> or run <editor-id>', 'error');
+                            addOutput('Examples:\n  run script.js    - Run a JavaScript file from the filesystem\n  run window-0     - Run code from an editor window', 'system-message');
                             break;
                         }
 
-                        // Find the editor window
-                        const editorId = args[0];
-                        const editorWindow = document.getElementById(editorId);
+                        const target = args[0];
 
-                        if (!editorWindow) {
-                            addOutput(`Error: No window found with id ${editorId}`, 'error');
-                            break;
-                        }
-
-                        // Check if it's a code editor
-                        if (editorWindow.getAttribute('data-app-type') !== 'code-editor') {
-                            addOutput(`Error: Window ${editorId} is not a code editor`, 'error');
-                            break;
-                        }
-
-                        // Get the code directly from the textarea - simpler approach that always works
-                        try {
-                            const textarea = editorWindow.querySelector('.code-textarea');
-
-                            if (!textarea) {
-                                addOutput(`Error: Could not find code editor in ${editorId}`, 'error');
-                                break;
-                            }
-
-                            const code = textarea.value;
-
-                            if (!code || code.trim() === '') {
-                                addOutput('Error: No code to run', 'error');
-                                break;
-                            }
-
-                            // Run the JavaScript code
-                            addOutput(`[${new Date().toLocaleTimeString()}] Running javascript code...`);
-
+                        // Check if running a file from filesystem
+                        if (target.endsWith('.js') || !target.startsWith('window-')) {
                             try {
-                                // Capture console.log outputs
-                                const originalConsoleLog = console.log;
-                                let logs = [];
+                                // Resolve the file path
+                                const resolvedPath = fs.resolvePath(target, terminalState.currentDirectory);
 
-                                console.log = (...args) => {
-                                    const logMessage = args.join(' ');
-                                    logs.push(logMessage);
-                                    originalConsoleLog(...args);
-                                };
+                                if (!fs.exists(resolvedPath)) {
+                                    addOutput(`run: ${target}: No such file`, 'error');
+                                    break;
+                                }
 
-                                // Run the code
-                                const result = eval(code);
+                                // Check if it's a file
+                                const stat = fs.stat(resolvedPath);
+                                if (stat.type !== 'file') {
+                                    addOutput(`run: ${target}: Not a file`, 'error');
+                                    break;
+                                }
 
-                                // Restore console.log
-                                console.log = originalConsoleLog;
+                                // Read the file content
+                                const code = fs.readFile(resolvedPath);
 
-                                // Output the logs
-                                logs.forEach(log => {
-                                    addOutput(log);
-                                });
+                                if (!code || code.trim() === '') {
+                                    addOutput(`run: ${target}: Empty file`, 'error');
+                                    break;
+                                }
 
-                                // If there was a return value and no console.logs, show it
-                                if (logs.length === 0 && result !== undefined) {
-                                    addOutput(`Result: ${result}`);
+                                // Check if it's a JavaScript file
+                                if (!resolvedPath.endsWith('.js') && !confirm(`File '${target}' doesn't have a .js extension. Try to run as JavaScript anyway?`)) {
+                                    addOutput(`run: Canceled`, 'error');
+                                    break;
+                                }
+
+                                // Run the JavaScript code
+                                addOutput(`[${new Date().toLocaleTimeString()}] Running ${target}...`);
+
+                                try {
+                                    // Capture console.log outputs
+                                    const originalConsoleLog = console.log;
+                                    let logs = [];
+
+                                    console.log = (...args) => {
+                                        const logMessage = args.join(' ');
+                                        logs.push(logMessage);
+                                        originalConsoleLog(...args);
+                                    };
+
+                                    // Create a context with terminal-specific utilities
+                                    const context = {
+                                        path: resolvedPath,
+                                        dir: resolvedPath.substring(0, resolvedPath.lastIndexOf('/')),
+                                        fs: fs,
+                                        terminal: {
+                                            print: (text) => addOutput(text),
+                                            error: (text) => addOutput(text, 'error'),
+                                            getCurrentDirectory: () => terminalState.currentDirectory,
+                                            getEnv: () => ({ ...terminalState.env })
+                                        }
+                                    };
+
+                                    // Run the code with the context
+                                    const wrappedCode = `
+                                        (function(path, dir, fs, terminal) {
+                                            ${code}
+                                        })(context.path, context.dir, context.fs, context.terminal);
+                                    `;
+
+                                    const result = eval(wrappedCode);
+
+                                    // Restore console.log
+                                    console.log = originalConsoleLog;
+
+                                    // Output the logs
+                                    logs.forEach(log => {
+                                        addOutput(log);
+                                    });
+
+                                    // If there was a return value and no console.logs, show it
+                                    if (logs.length === 0 && result !== undefined) {
+                                        addOutput(`Result: ${result}`);
+                                    }
+
+                                    addOutput(`[${new Date().toLocaleTimeString()}] Finished running ${target}`);
+                                } catch (error) {
+                                    addOutput(`Error running ${target}: ${error.message}`, 'error');
+                                    if (error.lineNumber) {
+                                        addOutput(`  at line ${error.lineNumber}`, 'error');
+                                    }
                                 }
                             } catch (error) {
-                                addOutput(`Error: ${error.message}`, 'error');
+                                addOutput(`run: ${error.message}`, 'error');
                             }
-                        } catch (err) {
-                            addOutput(`Error: ${err.message}`, 'error');
+                        } else {
+                            // Original window-based run functionality
+                            const editorId = target;
+                            const editorWindow = document.getElementById(editorId);
+
+                            if (!editorWindow) {
+                                addOutput(`Error: No window found with id ${editorId}`, 'error');
+                                break;
+                            }
+
+                            // Check if it's a code editor
+                            if (editorWindow.getAttribute('data-app-type') !== 'code-editor') {
+                                addOutput(`Error: Window ${editorId} is not a code editor`, 'error');
+                                break;
+                            }
+
+                            // Get the code directly from the textarea
+                            try {
+                                const textarea = editorWindow.querySelector('.code-textarea');
+
+                                if (!textarea) {
+                                    addOutput(`Error: Could not find code editor in ${editorId}`, 'error');
+                                    break;
+                                }
+
+                                const code = textarea.value;
+
+                                if (!code || code.trim() === '') {
+                                    addOutput('Error: No code to run', 'error');
+                                    break;
+                                }
+
+                                // Run the JavaScript code
+                                addOutput(`[${new Date().toLocaleTimeString()}] Running code from ${editorId}...`);
+
+                                try {
+                                    // Capture console.log outputs
+                                    const originalConsoleLog = console.log;
+                                    let logs = [];
+
+                                    console.log = (...args) => {
+                                        const logMessage = args.join(' ');
+                                        logs.push(logMessage);
+                                        originalConsoleLog(...args);
+                                    };
+
+                                    // Run the code
+                                    const result = eval(code);
+
+                                    // Restore console.log
+                                    console.log = originalConsoleLog;
+
+                                    // Output the logs
+                                    logs.forEach(log => {
+                                        addOutput(log);
+                                    });
+
+                                    // If there was a return value and no console.logs, show it
+                                    if (logs.length === 0 && result !== undefined) {
+                                        addOutput(`Result: ${result}`);
+                                    }
+
+                                    addOutput(`[${new Date().toLocaleTimeString()}] Finished running code from ${editorId}`);
+                                } catch (error) {
+                                    addOutput(`Error: ${error.message}`, 'error');
+                                }
+                            } catch (err) {
+                                addOutput(`Error: ${err.message}`, 'error');
+                            }
                         }
                         break;
 
