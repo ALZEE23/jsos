@@ -83,12 +83,41 @@
                 if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
 
-                    if (filePath) {
-                        // If we already have a file path, save directly
-                        saveFile(filePath, codeTextarea.value);
-                    } else {
-                        // Ask for a file name and path
-                        showSaveDialog(codeTextarea.value);
+                    if (options && options.onSave && typeof options.onSave === 'function') {
+                        // Use provided save callback
+                        options.onSave(codeTextarea.value);
+                    } else if (options && options.filePath) {
+                        // Default save behavior for regular files
+                        try {
+                            if (window.FileSystem) {
+                                window.FileSystem.writeFile(options.filePath, codeTextarea.value);
+
+                                // Show notification
+                                const notification = document.createElement('div');
+                                notification.className = 'notification';
+                                notification.textContent = `File saved: ${options.filePath}`;
+                                document.body.appendChild(notification);
+
+                                // Auto-remove notification
+                                setTimeout(() => {
+                                    notification.style.opacity = '0';
+                                    setTimeout(() => notification.remove(), 300);
+                                }, 2000);
+                            }
+                        } catch (error) {
+                            console.error('Error saving file:', error);
+
+                            // Show error notification
+                            const notification = document.createElement('div');
+                            notification.className = 'notification error';
+                            notification.textContent = `Error saving file: ${error.message}`;
+                            document.body.appendChild(notification);
+
+                            setTimeout(() => {
+                                notification.style.opacity = '0';
+                                setTimeout(() => notification.remove(), 300);
+                            }, 2000);
+                        }
                     }
 
                     return;

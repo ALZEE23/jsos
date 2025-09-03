@@ -26,8 +26,9 @@
       <button class="app-icon" data-app="terminal">💻</button>
     </div>
 
-    <!-- App module scripts - make sure FileSystem.js is loaded before terminal.js -->
+    <!-- App module scripts - make sure to load SystemFiles before other modules -->
     <script src="window-manager.js"></script>
+    <script src="js/SystemFiles.js"></script>
     <script src="js/FileSystem.js"></script>
     <script src="apps/notepad.js"></script>
     <script src="apps/calculator.js"></script>
@@ -35,5 +36,20 @@
     <script src="apps/code-editor.js"></script>
     <script src="apps/terminal.js"></script>
     <script src="main.js"></script>
+
+    <!-- Add initialization script to ensure SystemFiles is ready -->
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        console.log("DOMContentLoaded: Checking if SystemFiles is available");
+        if (typeof window.SystemFiles === "undefined") {
+          console.warn(
+            "SystemFiles not initialized properly, attempting to reload"
+          );
+          const script = document.createElement("script");
+          script.src = "js/SystemFiles.js";
+          document.body.appendChild(script);
+        }
+      });
+    </script>
   </body>
 </html>
