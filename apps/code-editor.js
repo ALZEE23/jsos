@@ -83,14 +83,24 @@
                 if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
 
-                    if (filePath) {
+                    // Use options.filePath instead of the local filePath variable to ensure it's always up to date
+                    if (options.filePath) {
                         // If we already have a file path, save directly
-                        saveFile(filePath, codeTextarea.value);
+                        console.log("Saving to existing path:", options.filePath);
+                        saveFile(options.filePath, codeTextarea.value);
                     } else {
                         // Ask for a file name and path
+                        console.log("Showing save dialog for new file");
                         showSaveDialog(codeTextarea.value);
                     }
 
+                    return;
+                }
+
+                // Toggle comments with Ctrl+/ or Cmd+/
+                if ((e.key === '/' || e.key === '?') && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    toggleComment();
                     return;
                 }
 
@@ -141,6 +151,11 @@
 
             // Function to show save dialog
             function showSaveDialog(content) {
+                console.log("Showing save dialog");
+
+                // Determine an appropriate default path
+                let defaultPath = "/home/user/Documents/untitled.js";
+
                 // Create a simple save dialog
                 const saveDialog = document.createElement('div');
                 saveDialog.className = 'save-dialog';
@@ -149,7 +164,7 @@
                         <h2>Save File</h2>
                         <div class="input-group">
                             <label for="save-path">File path:</label>
-                            <input type="text" id="save-path" value="/home/user/Documents/untitled.js">
+                            <input type="text" id="save-path" value="${defaultPath}">
                         </div>
                         <div class="dialog-buttons">
                             <button class="save-confirm">Save</button>
@@ -165,12 +180,35 @@
                 pathInput.focus();
                 pathInput.setSelectionRange(pathInput.value.lastIndexOf('/') + 1, pathInput.value.length);
 
-                // Handle buttons
-                saveDialog.querySelector('.save-confirm').addEventListener('click', () => {
+                // Function to handle the save action
+                function handleSave() {
                     const path = pathInput.value;
+
+                    // Check if file already exists
+                    if (window.FileSystem && FileSystem.exists(path)) {
+                        const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
+                        if (!confirmOverwrite) {
+                            return; // Don't save, keep dialog open
+                        }
+                    }
+
                     saveFile(path, content);
                     saveDialog.remove();
+                }
+
+                // Handle Enter key in input
+                pathInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSave();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        saveDialog.remove();
+                    }
                 });
+
+                // Handle buttons
+                saveDialog.querySelector('.save-confirm').addEventListener('click', handleSave);
 
                 saveDialog.querySelector('.save-cancel').addEventListener('click', () => {
                     saveDialog.remove();
@@ -179,9 +217,26 @@
 
             // Function to save file
             function saveFile(path, content) {
+                console.log("Attempting to save to:", path);
+
                 try {
                     // Use the FileSystem to save the file
                     if (window.FileSystem) {
+                        // Check if this is an existing file that we're updating (our own file)
+                        const isSameFile = path === options.filePath;
+
+                        // Check if file exists and it's not our current file
+                        if (!isSameFile && FileSystem.exists(path)) {
+                            // Ask for confirmation before overwriting
+                            const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
+                            if (!confirmOverwrite) {
+                                console.log("Save canceled - file exists");
+                                showNotification("Save canceled - file already exists", "info");
+                                return;
+                            }
+                        }
+
+                        // Save the file
                         FileSystem.writeFile(path, content);
 
                         // Update the window title with the new file name
@@ -194,8 +249,9 @@
                             }
                         }
 
-                        // Update the stored file path
+                        // Update the stored file path in options (this is critical!)
                         options.filePath = path;
+                        console.log("Updated options.filePath to:", path);
 
                         // Show a success message
                         showNotification(`File saved: ${path}`);
@@ -204,6 +260,7 @@
                     }
                 } catch (error) {
                     showNotification(`Error saving file: ${error.message}`, 'error');
+                    console.error("Save error:", error);
                 }
             }
 
@@ -233,6 +290,9 @@
                 }
 
                 lineNumbers.innerHTML = lineNumbersHtml;
+
+                // Make sure line numbers container is properly positioned
+                lineNumbers.style.top = '0';  // Reset top position
             }
 
             // Auto-completion handling
@@ -295,23 +355,85 @@
 
             // Function to find custom variables and functions in the code
             function findCustomVariables(code) {
-                const variables = [];
+                const variables = new Set();
 
                 // Match variable declarations (var, let, const)
                 const varRegex = /\b(?:var|let|const)\s+([a-zA-Z0-9_$]+)\b/g;
                 let match;
-
                 while ((match = varRegex.exec(code)) !== null) {
-                    variables.push(match[1]);
+                    variables.add(match[1]);
                 }
 
                 // Match function declarations
                 const funcRegex = /\bfunction\s+([a-zA-Z0-9_$]+)\b/g;
                 while ((match = funcRegex.exec(code)) !== null) {
-                    variables.push(match[1]);
+                    variables.add(match[1]);
                 }
 
-                return [...new Set(variables)]; // Remove duplicates
+                // Match function parameters
+                const paramRegex = /\bfunction\s*(?:[a-zA-Z0-9_$]+)?\s*\(([^)]*)\)/g;
+                while ((match = paramRegex.exec(code)) !== null) {
+                    const params = match[1].split(',').map(p => p.trim());
+                    params.forEach(param => {
+                        // Handle destructuring and default values by taking just the parameter name
+                        const paramName = param.split('=')[0].trim().match(/^[a-zA-Z0-9_$]+/);
+                        if (paramName) {
+                            variables.add(paramName[0]);
+                        }
+                    });
+                }
+
+                // Match class names
+                const classRegex = /\bclass\s+([a-zA-Z0-9_$]+)\b/g;
+                while ((match = classRegex.exec(code)) !== null) {
+                    variables.add(match[1]);
+                }
+
+                // Match for...of and for...in variable declarations
+                const forLoopRegex = /\bfor\s*\(\s*(const|let|var)?\s*([a-zA-Z0-9_$]+)\s*(of|in)\s*/g;
+                while ((match = forLoopRegex.exec(code)) !== null) {
+                    variables.add(match[2]);
+                }
+
+                // Match object property assignments that create variables
+                const objectPropRegex = /\b([a-zA-Z0-9_$]+)\s*:\s*function\b/g;
+                while ((match = objectPropRegex.exec(code)) !== null) {
+                    variables.add(match[1]);
+                }
+
+                // Match arrow function parameters
+                const arrowFuncRegex = /\(([^)]*)\)\s*=>/g;
+                while ((match = arrowFuncRegex.exec(code)) !== null) {
+                    const params = match[1].split(',').map(p => p.trim());
+                    params.forEach(param => {
+                        // Handle destructuring and default values
+                        const paramName = param.split('=')[0].trim().match(/^[a-zA-Z0-9_$]+/);
+                        if (paramName) {
+                            variables.add(paramName[0]);
+                        }
+                    });
+                }
+
+                // Match single-parameter arrow functions without parentheses
+                const singleParamArrowRegex = /\b([a-zA-Z0-9_$]+)\s*=>/g;
+                while ((match = singleParamArrowRegex.exec(code)) !== null) {
+                    variables.add(match[1]);
+                }
+
+                // Match imported variables
+                const importRegex = /\bimport\s*{([^}]*)}\s*from/g;
+                while ((match = importRegex.exec(code)) !== null) {
+                    const imports = match[1].split(',').map(i => i.trim());
+                    imports.forEach(imp => {
+                        // Handle 'as' alias
+                        const importName = imp.split(' as ')[0].trim();
+                        if (importName) {
+                            variables.add(importName);
+                        }
+                    });
+                }
+
+                return [...variables]; // Convert Set back to array
             }
 
             // Function to show suggestions
@@ -412,6 +534,87 @@
             // Function to hide suggestions
             function hideSuggestions() {
                 suggestionsContainer.style.display = 'none';
+            }
+
+            // Add this function to toggle comments
+            function toggleComment() {
+                // Get selection
+                const start = codeTextarea.selectionStart;
+                const end = codeTextarea.selectionEnd;
+
+                // Get the selected text
+                const selectedText = codeTextarea.value.substring(start, end);
+
+                // Check if there's a selection
+                if (start !== end) {
+                    // Multiple lines
+                    const lines = selectedText.split('\n');
+                    const isAllCommented = lines.every(line => line.trim().startsWith('//'));
+
+                    // Toggle comments based on if all lines are already commented
+                    const newLines = lines.map(line => {
+                        if (isAllCommented) {
+                            // Remove comments
+                            return line.replace(/^\s*\/\/\s?/, '');
+                        } else {
+                            // Add comments
+                            return '// ' + line;
+                        }
+                    });
+
+                    // Replace the selection with the new text
+                    codeTextarea.value = codeTextarea.value.substring(0, start) +
+                        newLines.join('\n') +
+                        codeTextarea.value.substring(end);
+
+                    // Restore selection
+                    codeTextarea.selectionStart = start;
+                    codeTextarea.selectionEnd = start + newLines.join('\n').length;
+                } else {
+                    // Single line - get the current line
+                    const text = codeTextarea.value;
+                    const lines = text.split('\n');
+                    let lineIndex = 0;
+                    let position = 0;
+
+                    // Find the current line
+                    for (let i = 0; i < lines.length; i++) {
+                        if (position + lines[i].length >= start) {
+                            lineIndex = i;
+                            break;
+                        }
+                        position += lines[i].length + 1; // +1 for the \n character
+                    }
+
+                    // Toggle comment on this single line
+                    const currentLine = lines[lineIndex];
+                    const lineStart = position;
+                    const isCommented = currentLine.trimStart().startsWith('//');
+
+                    if (isCommented) {
+                        // Remove comment
+                        lines[lineIndex] = currentLine.replace(/^\s*\/\/\s?/, '');
+                    } else {
+                        // Add comment
+                        lines[lineIndex] = '// ' + currentLine;
+                    }
+
+                    // Update the textarea
+                    codeTextarea.value = lines.join('\n');
+
+                    // Place cursor at the same position
+                    const cursorOffset = isCommented ?
+                        (currentLine.indexOf('//') > -1 ? currentLine.indexOf('//') + (currentLine.charAt(currentLine.indexOf('//') + 2) === ' ' ? 3 : 2) : 0) :
+                        3;
+
+                    codeTextarea.selectionStart = codeTextarea.selectionEnd = start + (isCommented ? -cursorOffset : cursorOffset);
+                }
+
+                // Update line numbers
+                updateLineNumbers();
+
+                // Trigger a change event to ensure autocompletion updates
+                codeTextarea.dispatchEvent(new Event('input'));
             }
 
             // Initial update

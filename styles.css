@@ -884,3 +884,14 @@ body {
 .notification.info {
     border-left-color: #2196F3;
 }
+
+/* Add these styles for system messages in terminal */
+
+.terminal-output .system-message {
+    color: #ff9900;
+    font-style: italic;
+}
+
+.terminal-output .error {
+    color: #ff3333;
+}

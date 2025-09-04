@@ -248,57 +248,44 @@
                                 addOutput(`[${new Date().toLocaleTimeString()}] Running ${target}...`);
 
                                 try {
-                                    // Capture console.log outputs
-                                    const originalConsoleLog = console.log;
-                                    let logs = [];
+                                    // Simple fix specifically for standalone function calls
 
-                                    console.log = (...args) => {
-                                        const logMessage = args.join(' ');
-                                        logs.push(logMessage);
-                                        originalConsoleLog(...args);
-                                    };
+                                    try {
+                                        // Capture console.log outputs
+                                        const originalConsoleLog = console.log;
+                                        let logs = [];
 
-                                    // Create a context with terminal-specific utilities
-                                    const context = {
-                                        path: resolvedPath,
-                                        dir: resolvedPath.substring(0, resolvedPath.lastIndexOf('/')),
-                                        fs: fs,
-                                        terminal: {
-                                            print: (text) => addOutput(text),
-                                            error: (text) => addOutput(text, 'error'),
-                                            getCurrentDirectory: () => terminalState.currentDirectory,
-                                            getEnv: () => ({ ...terminalState.env })
+                                        console.log = (...args) => {
+                                            const logMessage = args.join(' ');
+                                            logs.push(logMessage);
+                                            originalConsoleLog(...args);
+                                        };
+
+                                        // Get the raw result by running the code directly
+                                        let rawResult = eval(code);
+
+                                        // Restore console.log
+                                        console.log = originalConsoleLog;
+
+                                        // Output the logs
+                                        logs.forEach(log => {
+                                            addOutput(log);
+                                        });
+
+                                        // If there was a return value, show it
+                                        if (rawResult !== undefined) {
+                                            addOutput(`${rawResult}`);
                                         }
-                                    };
 
-                                    // Run the code with the context
-                                    const wrappedCode = `
-                                        (function(path, dir, fs, terminal) {
-                                            ${code}
-                                        })(context.path, context.dir, context.fs, context.terminal);
-                                    `;
-
-                                    const result = eval(wrappedCode);
-
-                                    // Restore console.log
-                                    console.log = originalConsoleLog;
-
-                                    // Output the logs
-                                    logs.forEach(log => {
-                                        addOutput(log);
-                                    });
-
-                                    // If there was a return value and no console.logs, show it
-                                    if (logs.length === 0 && result !== undefined) {
-                                        addOutput(`Result: ${result}`);
+                                        addOutput(`[${new Date().toLocaleTimeString()}] Finished running ${target}`);
+                                    } catch (error) {
+                                        addOutput(`Error running ${target}: ${error.message}`, 'error');
+                                        if (error.lineNumber) {
+                                            addOutput(`  at line ${error.lineNumber}`, 'error');
+                                        }
                                     }
-
-                                    addOutput(`[${new Date().toLocaleTimeString()}] Finished running ${target}`);
                                 } catch (error) {
-                                    addOutput(`Error running ${target}: ${error.message}`, 'error');
-                                    if (error.lineNumber) {
-                                        addOutput(`  at line ${error.lineNumber}`, 'error');
-                                    }
+                                    addOutput(`run: ${error.message}`, 'error');
                                 }
                             } catch (error) {
                                 addOutput(`run: ${error.message}`, 'error');
