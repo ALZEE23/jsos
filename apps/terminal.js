@@ -192,7 +192,13 @@
   run <file.js>   - Run a JavaScript file from the filesystem
   run <window-id> - Run code from a specific editor window
   windows         - List all open windows with IDs
-  date            - Show current date and time`);
+  date            - Show current date and time
+  
+  # System Commands
+  system-files    - List all system files
+  system-edit <f> - Edit a system file
+  system-reset    - Reset all system modifications
+  refresh         - Reload the page`);
                         break;
 
                     case 'echo':
@@ -681,6 +687,134 @@
                                 addOutput(`    Has title: ${hasTitle}, Has app-type: ${hasAppType}`, 'system-message');
                             }
                         }
+                        break;
+
+                    case 'system-files':
+                        // Ensure SystemFiles is available
+                        if (typeof window.SystemFiles === 'undefined') {
+                            addOutput('SystemFiles module not found. Attempting to initialize...', 'system-message');
+
+                            // Dynamically load SystemFiles if it's not already loaded
+                            const script = document.createElement('script');
+                            script.src = 'js/SystemFiles.js';
+                            script.onload = () => {
+                                addOutput('SystemFiles module loaded successfully!', 'system-message');
+                            };
+                            script.onerror = () => {
+                                addOutput('Failed to load SystemFiles module.', 'error');
+                            };
+                            document.body.appendChild(script);
+                            break;
+                        }
+
+                        const files = SystemFiles.listFiles();
+                        if (files.length === 0) {
+                            addOutput('No system files loaded yet. They may still be loading...', 'system-message');
+                            addOutput('Use system-reload to force loading of all files.', 'system-message');
+                        } else {
+                            addOutput('System Files:');
+                            files.forEach(file => {
+                                addOutput(`  ${file}`);
+                            });
+                            addOutput('\nUse system-edit <file> to edit a system file.');
+                        }
+                        break;
+
+                    case 'system-edit':
+                        if (typeof window.SystemFiles === 'undefined') {
+                            addOutput('SystemFiles module not loaded.', 'error');
+                            break;
+                        }
+
+                        if (args.length === 0) {
+                            addOutput('Usage: system-edit <file>', 'error');
+                            break;
+                        }
+
+                        // Handle path with or without leading slash
+                        let filePath = args[0];
+                        if (filePath.startsWith('/')) {
+                            filePath = filePath.substring(1);
+                        }
+
+                        const content = SystemFiles.getFile(filePath);
+
+                        if (content === null) {
+                            addOutput(`File not found: ${filePath}`, 'error');
+                            addOutput('Use system-files to list available files.', 'system-message');
+                            break;
+                        }
+
+                        // Open in code editor with special save handler
+                        WindowManager.createWindow('code-editor', {
+                            code: content,
+                            filePath: filePath,
+                            title: `System Edit: ${filePath}`,
+                            onSave: (newContent) => {
+                                try {
+                                    const success = SystemFiles.saveFile(filePath, newContent);
+                                    if (success) {
+                                        addOutput(`System file updated: ${filePath}`);
+                                        addOutput('Changes have been applied. For full effect, you may need to refresh the page.', 'system-message');
+                                    } else {
+                                        addOutput(`Failed to apply changes to ${filePath}`, 'error');
+                                    }
+                                } catch (e) {
+                                    addOutput(`Error saving system file: ${e.message}`, 'error');
+                                }
+                            }
+                        });
+                        break;
+
+                    case 'system-reset':
+                        if (typeof window.SystemFiles === 'undefined') {
+                            addOutput('SystemFiles module not loaded.', 'error');
+                            break;
+                        }
+
+                        if (confirm('WARNING: This will reset all system file modifications. Continue?')) {
+                            SystemFiles.reset();
+                            addOutput('System files have been reset to their original versions.');
+                            addOutput('Type refresh to reload the page and apply changes.', 'system-message');
+                        } else {
+                            addOutput('System reset cancelled.');
+                        }
+                        break;
+
+                    case 'system-reload':
+                        if (typeof window.SystemFiles === 'undefined') {
+                            addOutput('SystemFiles module not loaded. Trying to load it...', 'system-message');
+
+                            const script = document.createElement('script');
+                            script.src = 'js/SystemFiles.js';
+                            script.onload = () => {
+                                addOutput('SystemFiles module loaded successfully!', 'system-message');
+                                SystemFiles.reload().then(success => {
+                                    if (success) {
+                                        addOutput('All system files reloaded successfully.', 'system-message');
+                                    } else {
+                                        addOutput('Failed to reload some system files.', 'error');
+                                    }
+                                });
+                            };
+                            document.body.appendChild(script);
+                        } else {
+                            addOutput('Reloading all system files...');
+                            SystemFiles.reload().then(success => {
+                                if (success) {
+                                    addOutput('All system files reloaded successfully.', 'system-message');
+                                } else {
+                                    addOutput('Failed to reload some system files.', 'error');
+                                }
+                            });
+                        }
+                        break;
+
+                    case 'refresh':
+                        addOutput('Reloading page...');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
                         break;
 
                     default:
