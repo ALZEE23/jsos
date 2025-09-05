@@ -218,6 +218,26 @@
             // Jalankan update line numbers awal
             updateLineNumbers();
 
+            // Variables for auto-save functionality
+            let autoSaveTimeout = null;
+            const AUTO_SAVE_DELAY = 2000; // 2 seconds after last change
+
+            // Function to handle auto-save with debounce
+            function triggerAutoSave() {
+                // Clear any pending save timeout
+                if (autoSaveTimeout) {
+                    clearTimeout(autoSaveTimeout);
+                }
+
+                // Set a new timeout for auto-saving
+                autoSaveTimeout = setTimeout(() => {
+                    if (options.filePath) {
+                        console.log("Auto-saving to:", options.filePath);
+                        saveFile(options.filePath, codeEditor.getValue(), true); // true indicates auto-save
+                    }
+                }, AUTO_SAVE_DELAY);
+            }
+
             // Update events untuk CodeMirror
             codeEditor.on('change', function () {
                 // Update codeTextarea.value untuk memastikan kompatibilitas
@@ -231,7 +251,10 @@
 
                 // Auto-save
                 if (options.filePath) {
+                    console.log("Change detected, triggering auto-save for:", options.filePath);
                     triggerAutoSave();
+                } else {
+                    console.log("No filePath in options, auto-save skipped");
                 }
             });
 
@@ -405,6 +428,7 @@
                     }
 
                     saveFile(path, content);
+                    console.log("After saveFile call in showSaveDialog, options.filePath =", options.filePath);
                     saveDialog.remove();
                 }
 
@@ -430,12 +454,14 @@
             // Override fungsi saveFile untuk menggunakan CodeMirror
             function saveFile(path, content, isAutoSave = false) {
                 console.log(`${isAutoSave ? 'Auto-saving' : 'Saving'} to:`, path);
+                console.log("Current options.filePath:", options.filePath);
 
                 try {
                     // Use the FileSystem to save the file
                     if (window.FileSystem) {
                         // Check if this is an existing file that we're updating (our own file)
                         const isSameFile = path === options.filePath;
+                        console.log("Is same file check:", { path, optionsFilePath: options.filePath, isSameFile });
 
                         // Check if file exists and it's not our current file
                         if (!isSameFile && FileSystem.exists(path)) {
@@ -860,32 +886,8 @@
 
                 // Trigger a change event to ensure autocompletion updates
                 codeTextarea.dispatchEvent(new Event('input'));
-            }
-
-            // Initial update
+            }            // Initial update
             updateLineNumbers();
-
-            // Add auto-save functionality to code-editor.js
-
-            // First, add a variable to track if auto-save is enabled and the last save time
-            let saveTimeout = null;
-            const AUTO_SAVE_DELAY = 1000; // Auto-save delay in milliseconds (1 second)
-
-            // Function to handle auto-save with debounce
-            function triggerAutoSave() {
-                // Clear any pending save timeout
-                if (saveTimeout) {
-                    clearTimeout(saveTimeout);
-                }
-
-                // Set a new timeout - but don't show any status messages
-                saveTimeout = setTimeout(() => {
-                    if (options.filePath) {
-                        console.log("Auto-saving to:", options.filePath);
-                        saveFile(options.filePath, codeTextarea.value, true); // true indicates auto-save
-                    }
-                }, AUTO_SAVE_DELAY);
-            }
 
             // Add suggestion styling
             const styleElement = document.createElement('style');
