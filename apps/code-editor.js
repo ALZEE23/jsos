@@ -220,7 +220,7 @@
 
             // Variables for auto-save functionality
             let autoSaveTimeout = null;
-            const AUTO_SAVE_DELAY = 2000; // 2 seconds after last change
+            const AUTO_SAVE_DELAY = 500; // 500 milliseconds after last change
 
             // Function to handle auto-save with debounce
             function triggerAutoSave() {
