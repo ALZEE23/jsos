@@ -20,6 +20,9 @@
                     <div class="line-numbers"></div>
                     <textarea class="code-textarea" spellcheck="false" placeholder="Write your code here..."></textarea>
                     <div class="suggestions-container" style="display: none;"></div>
+                    <div class="editor-controls">
+                        <div class="save-status"></div>
+                    </div>
                 </div>
             `;
 
@@ -27,6 +30,7 @@
             const codeTextarea = innerContent.querySelector('.code-textarea');
             const lineNumbers = innerContent.querySelector('.line-numbers');
             const suggestionsContainer = innerContent.querySelector('.suggestions-container');
+            const saveStatus = innerContent.querySelector('.save-status');
 
             // Store the file path for saving
             const filePath = options.filePath;
@@ -70,6 +74,11 @@
             codeTextarea.addEventListener('input', () => {
                 updateLineNumbers();
                 handleAutoCompletion();
+
+                // Trigger auto-save if we have a file path (meaning it was previously saved)
+                if (options.filePath) {
+                    triggerAutoSave();
+                }
             });
 
             // Sync scroll between line numbers and textarea
@@ -216,8 +225,8 @@
             }
 
             // Function to save file
-            function saveFile(path, content) {
-                console.log("Attempting to save to:", path);
+            function saveFile(path, content, isAutoSave = false) {
+                console.log(`${isAutoSave ? 'Auto-saving' : 'Saving'} to:`, path);
 
                 try {
                     // Use the FileSystem to save the file
@@ -227,11 +236,18 @@
 
                         // Check if file exists and it's not our current file
                         if (!isSameFile && FileSystem.exists(path)) {
-                            // Ask for confirmation before overwriting
-                            const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
-                            if (!confirmOverwrite) {
-                                console.log("Save canceled - file exists");
-                                showNotification("Save canceled - file already exists", "info");
+                            // For manual save, ask for confirmation
+                            if (!isAutoSave) {
+                                const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
+                                if (!confirmOverwrite) {
+                                    console.log("Save canceled - file exists");
+                                    showNotification("Save canceled - file already exists", "info");
+                                    return;
+                                }
+                            } else {
+                                // For auto-save of a different file, don't overwrite without confirmation
+                                // Just silently abort the auto-save
+                                console.log("Auto-save canceled - would overwrite a different file");
                                 return;
                             }
                         }
@@ -253,13 +269,23 @@
                         options.filePath = path;
                         console.log("Updated options.filePath to:", path);
 
-                        // Show a success message
-                        showNotification(`File saved: ${path}`);
+                        // Show a success message for manual saves only
+                        if (!isAutoSave) {
+                            showNotification(`File saved: ${path}`);
+                        }
+                        // No status update for auto-save (silent operation)
+
                     } else {
-                        showNotification('FileSystem not available', 'error');
+                        // Only show errors for manual saves
+                        if (!isAutoSave) {
+                            showNotification('FileSystem not available', 'error');
+                        }
                     }
                 } catch (error) {
-                    showNotification(`Error saving file: ${error.message}`, 'error');
+                    // Only show errors for manual saves
+                    if (!isAutoSave) {
+                        showNotification(`Error saving file: ${error.message}`, 'error');
+                    }
                     console.error("Save error:", error);
                 }
             }
@@ -619,6 +645,28 @@
 
             // Initial update
             updateLineNumbers();
+
+            // Add auto-save functionality to code-editor.js
+
+            // First, add a variable to track if auto-save is enabled and the last save time
+            let saveTimeout = null;
+            const AUTO_SAVE_DELAY = 1000; // Auto-save delay in milliseconds (1 second)
+
+            // Function to handle auto-save with debounce
+            function triggerAutoSave() {
+                // Clear any pending save timeout
+                if (saveTimeout) {
+                    clearTimeout(saveTimeout);
+                }
+
+                // Set a new timeout - but don't show any status messages
+                saveTimeout = setTimeout(() => {
+                    if (options.filePath) {
+                        console.log("Auto-saving to:", options.filePath);
+                        saveFile(options.filePath, codeTextarea.value, true); // true indicates auto-save
+                    }
+                }, AUTO_SAVE_DELAY);
+            }
         },
 
         // Method to get the current code from this editor
