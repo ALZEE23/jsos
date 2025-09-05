@@ -895,3 +895,66 @@ body {
 .terminal-output .error {
     color: #ff3333;
 }
+
+/* Tambahkan CSS ini di file styles.css Anda */
+
+/* Pastikan CodeMirror mengadopsi tampilan textarea yang ada */
+.CodeMirror {
+    height: 100% !important;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    background-color: #fff1e8 !important;
+    color: #333;
+    border: none;
+    padding-left: 40px !important;
+    box-sizing: border-box;
+}
+
+/* Sembunyikan line numbers bawaan CodeMirror karena kita sudah punya sendiri */
+.CodeMirror-gutters {
+    display: none !important;
+}
+
+/* Styling untuk comments */
+.cm-comment {
+    color: #008000 !important;
+    font-style: italic;
+}
+
+/* Styling untuk keywords */
+.cm-keyword {
+    color: #0000ff !important;
+}
+
+/* Styling untuk strings */
+.cm-string {
+    color: #a31515 !important;
+}
+
+/* Styling untuk numbers */
+.cm-number {
+    color: #098658 !important;
+}
+
+/* Styling untuk functions */
+.cm-def, .cm-variable-2 {
+    color: #795E26 !important;
+}
+
+/* Pastikan cursor terlihat jelas */
+.CodeMirror-cursor {
+    border-left: 2px solid black !important;
+    width: 0 !important;
+}
+
+/* Pastikan line selection tetap terlihat */
+.CodeMirror-selected { 
+    background: #d7d4f0 !important; 
+}
+
+/* Mengembalikan tampilan line numbers custom kita */
+.code-editor-container .line-numbers {
+    z-index: 10 !important;
+    pointer-events: none !important;
+}

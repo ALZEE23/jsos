@@ -14,30 +14,237 @@
                 return;
             }
 
-            // Create a simpler code editor layout without the save button and title bar
+            // Ubah implementasi code editor untuk menggunakan CodeMirror tanpa mengubah tampilan
+
+            // Tetap menggunakan layout HTML yang sama
             innerContent.innerHTML = `
                 <div class="code-editor-container">
                     <div class="line-numbers"></div>
-                    <textarea class="code-textarea" spellcheck="false" placeholder="Write your code here..."></textarea>
+                    <div class="code-mirror-wrapper"></div>
                     <div class="suggestions-container" style="display: none;"></div>
+                    <div class="editor-controls">
+                        <div class="save-status"></div>
+                    </div>
                 </div>
             `;
 
             // Get references to UI elements
-            const codeTextarea = innerContent.querySelector('.code-textarea');
+            const editorWrapper = innerContent.querySelector('.code-mirror-wrapper');
             const lineNumbers = innerContent.querySelector('.line-numbers');
             const suggestionsContainer = innerContent.querySelector('.suggestions-container');
+            const saveStatus = innerContent.querySelector('.save-status');
+
+            // Siapkan konten awal
+            const initialContent = options.code || '// JavaScript code example\nconsole.log("Hello, world!");\n\n// Define a function\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\ngreet("User");';
+
+            // Perbaiki definisi extraKeys
+            const cmExtraKeys = {
+                "Ctrl-S": function (cm) {
+                    // Save on Ctrl+S / Cmd+S
+                    if (options.filePath) {
+                        saveFile(options.filePath, cm.getValue());
+                    } else {
+                        showSaveDialog(cm.getValue());
+                    }
+                },
+                "Ctrl-/": function (cm) {
+                    console.log("Toggle comment triggered");
+                    try {
+                        cm.toggleComment({ lineComment: "//" });
+                        console.log("Toggle comment executed successfully");
+                    } catch (error) {
+                        console.error("Error toggling comment:", error);
+                    }
+                }
+            };
+
+            // Setel extraKeys di awal inisialisasi CodeMirror
+            const codeEditor = CodeMirror(editorWrapper, {
+                value: initialContent,
+                mode: "javascript",
+                theme: 'default',
+                lineNumbers: false,
+                indentUnit: 4,
+                smartIndent: true,
+                indentWithTabs: false,
+                lineWrapping: false,
+                autoCloseBrackets: true,
+                matchBrackets: true,
+                viewportMargin: Infinity,
+                extraKeys: cmExtraKeys  // Gunakan variabel yang sudah didefinisikan
+            });
+
+            // 1. Tambahkan callback untuk menangani keydown event dengan prioritas tinggi
+            // Tambahkan ini sebelum Anda mengatur extraKeys
+            codeEditor.getInputField().addEventListener('keydown', function (event) {
+                // Cek jika suggestion box visible dan Enter ditekan
+                if (event.key === 'Enter' && suggestionsContainer.style.display !== 'none') {
+                    console.log("Enter intercepted at input field level!");
+                    event.preventDefault();
+                    event.stopPropagation();
+                    applySuggestion();
+                    return false;
+                }
+            }, true); // true untuk fase capturing - sangat penting!
+
+            // Solusi minimalis untuk mengatasi masalah arrow keys
+
+            // 1. Pasang event handler khusus untuk keyboard navigation
+            codeEditor.getInputField().addEventListener('keydown', function (e) {
+                // Hanya proses jika suggestion box terlihat
+                if (suggestionsContainer.style.display !== 'none') {
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                        // Hentikan propagasi dan default behavior
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+
+                        // Jalankan navigasi
+                        const direction = e.key === 'ArrowDown' ? 1 : -1;
+
+                        // Simpan cursor position
+                        const cursor = codeEditor.getCursor();
+
+                        // Navigasi suggestion
+                        const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                        if (items.length === 0) return;
+
+                        const currentIndex = [...items].findIndex(item => item.classList.contains('selected'));
+                        let newIndex = currentIndex + direction;
+
+                        // Wrap around
+                        if (newIndex < 0) newIndex = items.length - 1;
+                        if (newIndex >= items.length) newIndex = 0;
+
+                        // Update selected item
+                        items.forEach(item => item.classList.remove('selected'));
+                        items[newIndex].classList.add('selected');
+
+                        // Kembalikan cursor ke posisi semula dan fokus
+                        setTimeout(() => {
+                            codeEditor.focus();
+                            codeEditor.setCursor(cursor);
+                        }, 0);
+
+                        return false;
+                    }
+                }
+            }, true); // true untuk fase capturing - sangat penting!
+
+            // Perlu memastikan mode "comment" dari CodeMirror dimuat
+            // Tambahkan kode ini di bagian awal inisialisasi, setelah deklarasi innerContent
+
+            // Pastikan addon comment tersedia
+            if (!CodeMirror.commands.toggleComment) {
+                console.error("CodeMirror comment addon tidak tersedia!");
+
+                // Mendefinisikan fallback toggleComment jika addon asli tidak tersedia
+                CodeMirror.commands.toggleComment = function (cm) {
+                    const selections = cm.listSelections();
+                    let lines = [];
+                    let lineNumbers = [];
+
+                    // Kumpulkan baris yang dipilih
+                    for (let i = 0; i < selections.length; i++) {
+                        const from = selections[i].from();
+                        const to = selections[i].to();
+
+                        for (let j = from.line; j <= to.line; j++) {
+                            if (lineNumbers.indexOf(j) === -1) {
+                                lineNumbers.push(j);
+                                lines.push(cm.getLine(j));
+                            }
+                        }
+                    }
+
+                    // Cek apakah semua baris sudah memiliki komentar
+                    const areAllCommented = lines.every(line => /^\s*\/\//.test(line));
+
+                    // Toggle komentar untuk semua baris
+                    cm.operation(() => {
+                        for (let i = 0; i < lineNumbers.length; i++) {
+                            const line = lines[i];
+                            const lineNum = lineNumbers[i];
+
+                            if (areAllCommented) {
+                                // Hapus komentar
+                                const newLine = line.replace(/^\s*\/\/\s?/, '');
+                                cm.replaceRange(
+                                    newLine,
+                                    { line: lineNum, ch: 0 },
+                                    { line: lineNum, ch: line.length }
+                                );
+                            } else {
+                                // Tambahkan komentar
+                                cm.replaceRange(
+                                    "// " + line,
+                                    { line: lineNum, ch: 0 },
+                                    { line: lineNum, ch: line.length }
+                                );
+                            }
+                        }
+                    });
+
+                    console.log("Manual toggle comment executed");
+                };
+            }
+
+            // Ganti referensi ke codeTextarea dengan codeEditor
+            const codeTextarea = {
+                value: initialContent,
+                selectionStart: 0,
+                selectionEnd: 0,
+                focus: function () { codeEditor.focus(); },
+                dispatchEvent: function () { },
+                // Emulasi properti yang diperlukan
+                get scrollTop() { return codeEditor.getScrollInfo().top; },
+                set scrollTop(val) { codeEditor.scrollTo(null, val); },
+                get scrollLeft() { return codeEditor.getScrollInfo().left; },
+                set scrollLeft(val) { codeEditor.scrollTo(val, null); }
+            };
+
+            // Update fungsi updateLineNumbers untuk bekerja dengan CodeMirror
+            function updateLineNumbers() {
+                const lines = codeEditor.getValue().split('\n');
+                const count = lines.length;
+
+                let lineNumbersHtml = '';
+                for (let i = 0; i < count; i++) {
+                    lineNumbersHtml += `<div>${i + 1}</div>`;
+                }
+
+                lineNumbers.innerHTML = lineNumbersHtml;
+            }
+
+            // Jalankan update line numbers awal
+            updateLineNumbers();
+
+            // Update events untuk CodeMirror
+            codeEditor.on('change', function () {
+                // Update codeTextarea.value untuk memastikan kompatibilitas
+                codeTextarea.value = codeEditor.getValue();
+
+                // Update line numbers
+                updateLineNumbers();
+
+                // Handle auto-completion
+                handleAutoCompletion();
+
+                // Auto-save
+                if (options.filePath) {
+                    triggerAutoSave();
+                }
+            });
+
+            codeEditor.on('scroll', function () {
+                // Update line numbers saat scrolling
+                lineNumbers.style.top = (-codeEditor.getScrollInfo().top) + 'px';
+
+                // Sembunyikan saran
+                hideSuggestions();
+            });
 
             // Store the file path for saving
             const filePath = options.filePath;
-
-            // Set initial content if provided
-            if (options.code) {
-                codeTextarea.value = options.code;
-            } else {
-                // Default sample code
-                codeTextarea.value = '// JavaScript code example\nconsole.log("Hello, world!");\n\n// Define a function\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\ngreet("User");';
-            }
 
             // Keywords for suggestions
             const jsKeywords = [
@@ -70,6 +277,11 @@
             codeTextarea.addEventListener('input', () => {
                 updateLineNumbers();
                 handleAutoCompletion();
+
+                // Trigger auto-save if we have a file path (meaning it was previously saved)
+                if (options.filePath) {
+                    triggerAutoSave();
+                }
             });
 
             // Sync scroll between line numbers and textarea
@@ -215,9 +427,9 @@
                 });
             }
 
-            // Function to save file
-            function saveFile(path, content) {
-                console.log("Attempting to save to:", path);
+            // Override fungsi saveFile untuk menggunakan CodeMirror
+            function saveFile(path, content, isAutoSave = false) {
+                console.log(`${isAutoSave ? 'Auto-saving' : 'Saving'} to:`, path);
 
                 try {
                     // Use the FileSystem to save the file
@@ -227,11 +439,18 @@
 
                         // Check if file exists and it's not our current file
                         if (!isSameFile && FileSystem.exists(path)) {
-                            // Ask for confirmation before overwriting
-                            const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
-                            if (!confirmOverwrite) {
-                                console.log("Save canceled - file exists");
-                                showNotification("Save canceled - file already exists", "info");
+                            // For manual save, ask for confirmation
+                            if (!isAutoSave) {
+                                const confirmOverwrite = confirm(`File '${path}' already exists. Overwrite?`);
+                                if (!confirmOverwrite) {
+                                    console.log("Save canceled - file exists");
+                                    showNotification("Save canceled - file already exists", "info");
+                                    return;
+                                }
+                            } else {
+                                // For auto-save of a different file, don't overwrite without confirmation
+                                // Just silently abort the auto-save
+                                console.log("Auto-save canceled - would overwrite a different file");
                                 return;
                             }
                         }
@@ -253,13 +472,23 @@
                         options.filePath = path;
                         console.log("Updated options.filePath to:", path);
 
-                        // Show a success message
-                        showNotification(`File saved: ${path}`);
+                        // Show a success message for manual saves only
+                        if (!isAutoSave) {
+                            showNotification(`File saved: ${path}`);
+                        }
+                        // No status update for auto-save (silent operation)
+
                     } else {
-                        showNotification('FileSystem not available', 'error');
+                        // Only show errors for manual saves
+                        if (!isAutoSave) {
+                            showNotification('FileSystem not available', 'error');
+                        }
                     }
                 } catch (error) {
-                    showNotification(`Error saving file: ${error.message}`, 'error');
+                    // Only show errors for manual saves
+                    if (!isAutoSave) {
+                        showNotification(`Error saving file: ${error.message}`, 'error');
+                    }
                     console.error("Save error:", error);
                 }
             }
@@ -279,29 +508,14 @@
                 }, 2000);
             }
 
-            // Function to update line numbers
-            function updateLineNumbers() {
-                const lines = codeTextarea.value.split('\n');
-                const count = lines.length;
-
-                let lineNumbersHtml = '';
-                for (let i = 0; i < count; i++) {
-                    lineNumbersHtml += `<div>${i + 1}</div>`;
-                }
-
-                lineNumbers.innerHTML = lineNumbersHtml;
-
-                // Make sure line numbers container is properly positioned
-                lineNumbers.style.top = '0';  // Reset top position
-            }
-
             // Auto-completion handling
             function handleAutoCompletion() {
-                const cursorPos = codeTextarea.selectionStart;
-                const text = codeTextarea.value.substring(0, cursorPos);
+                const cursor = codeEditor.getCursor();
+                const line = codeEditor.getLine(cursor.line);
+                const textBeforeCursor = line.substring(0, cursor.ch);
 
-                // Get the current word being typed
-                const match = text.match(/[a-zA-Z0-9_$]+$/);
+                // Dapatkan kata yang sedang diketik
+                const match = textBeforeCursor.match(/[a-zA-Z0-9_$]+$/);
                 if (!match) {
                     hideSuggestions();
                     return;
@@ -314,7 +528,7 @@
                 }
 
                 // Check for dot notation (e.g., "console.")
-                const dotMatch = text.match(/([a-zA-Z0-9_$]+)\.([a-zA-Z0-9_$]*)$/);
+                const dotMatch = textBeforeCursor.match(/([a-zA-Z0-9_$]+)\.([a-zA-Z0-9_$]*)$/);
 
                 let suggestions = [];
 
@@ -338,7 +552,7 @@
                     );
 
                     // Custom variables from the current code
-                    const customVars = findCustomVariables(codeTextarea.value);
+                    const customVars = findCustomVariables(codeEditor.getValue());
                     const matchingCustomVars = customVars.filter(v =>
                         v.toLowerCase().startsWith(currentWord.toLowerCase())
                     );
@@ -346,114 +560,66 @@
                     suggestions = [...new Set([...matchingCustomVars, ...suggestions])];
                 }
 
+                console.log("Current word:", currentWord, "Suggestions:", suggestions.length);
+
                 if (suggestions.length > 0) {
-                    showSuggestions(suggestions, currentWord, dotMatch);
+                    showSuggestions(suggestions, currentWord);
                 } else {
                     hideSuggestions();
                 }
             }
 
-            // Function to find custom variables and functions in the code
-            function findCustomVariables(code) {
-                const variables = new Set();
+            // Perbaiki posisi suggestion box - jangan terlalu atas meskipun banyak item
 
-                // Match variable declarations (var, let, const)
-                const varRegex = /\b(?:var|let|const)\s+([a-zA-Z0-9_$]+)\b/g;
-                let match;
-                while ((match = varRegex.exec(code)) !== null) {
-                    variables.add(match[1]);
-                }
-
-                // Match function declarations
-                const funcRegex = /\bfunction\s+([a-zA-Z0-9_$]+)\b/g;
-                while ((match = funcRegex.exec(code)) !== null) {
-                    variables.add(match[1]);
-                }
-
-                // Match function parameters
-                const paramRegex = /\bfunction\s*(?:[a-zA-Z0-9_$]+)?\s*\(([^)]*)\)/g;
-                while ((match = paramRegex.exec(code)) !== null) {
-                    const params = match[1].split(',').map(p => p.trim());
-                    params.forEach(param => {
-                        // Handle destructuring and default values by taking just the parameter name
-                        const paramName = param.split('=')[0].trim().match(/^[a-zA-Z0-9_$]+/);
-                        if (paramName) {
-                            variables.add(paramName[0]);
-                        }
-                    });
-                }
-
-                // Match class names
-                const classRegex = /\bclass\s+([a-zA-Z0-9_$]+)\b/g;
-                while ((match = classRegex.exec(code)) !== null) {
-                    variables.add(match[1]);
-                }
-
-                // Match for...of and for...in variable declarations
-                const forLoopRegex = /\bfor\s*\(\s*(const|let|var)?\s*([a-zA-Z0-9_$]+)\s*(of|in)\s*/g;
-                while ((match = forLoopRegex.exec(code)) !== null) {
-                    variables.add(match[2]);
-                }
-
-                // Match object property assignments that create variables
-                const objectPropRegex = /\b([a-zA-Z0-9_$]+)\s*:\s*function\b/g;
-                while ((match = objectPropRegex.exec(code)) !== null) {
-                    variables.add(match[1]);
-                }
-
-                // Match arrow function parameters
-                const arrowFuncRegex = /\(([^)]*)\)\s*=>/g;
-                while ((match = arrowFuncRegex.exec(code)) !== null) {
-                    const params = match[1].split(',').map(p => p.trim());
-                    params.forEach(param => {
-                        // Handle destructuring and default values
-                        const paramName = param.split('=')[0].trim().match(/^[a-zA-Z0-9_$]+/);
-                        if (paramName) {
-                            variables.add(paramName[0]);
-                        }
-                    });
-                }
-
-                // Match single-parameter arrow functions without parentheses
-                const singleParamArrowRegex = /\b([a-zA-Z0-9_$]+)\s*=>/g;
-                while ((match = singleParamArrowRegex.exec(code)) !== null) {
-                    variables.add(match[1]);
-                }
-
-                // Match imported variables
-                const importRegex = /\bimport\s*{([^}]*)}\s*from/g;
-                while ((match = importRegex.exec(code)) !== null) {
-                    const imports = match[1].split(',').map(i => i.trim());
-                    imports.forEach(imp => {
-                        // Handle 'as' alias
-                        const importName = imp.split(' as ')[0].trim();
-                        if (importName) {
-                            variables.add(importName);
-                        }
-                    });
-                }
-
-                return [...variables]; // Convert Set back to array
-            }
-
-            // Function to show suggestions
             function showSuggestions(suggestions, currentWord) {
-                // Calculate position for suggestions
-                const cursorPos = codeTextarea.selectionStart;
-                const textBeforeCursor = codeTextarea.value.substring(0, cursorPos);
-                const lines = textBeforeCursor.split('\n');
-                const currentLineIndex = lines.length - 1;
-                const currentLineText = lines[currentLineIndex];
-                const lineHeight = parseInt(getComputedStyle(codeTextarea).lineHeight) || 18;
+                // Calculate position for suggestions based on cursor position
+                const cursor = codeEditor.getCursor();
+                const cursorCoords = codeEditor.cursorCoords(true);
 
-                // Position the suggestions relative to cursor
-                const topOffset = (currentLineIndex * lineHeight) - codeTextarea.scrollTop + 25;
-                const leftOffset = 50 + Math.min(currentLineText.length * 8, 200); // Simple estimate
+                // Get the correct position relative to window coordinates
+                const editorRect = editorWrapper.getBoundingClientRect();
+                const windowRect = contentElement.closest('.window').getBoundingClientRect();
 
-                suggestionsContainer.style.top = topOffset + 'px';
-                suggestionsContainer.style.left = leftOffset + 'px';
+                // Position relative to the window content
+                const relativeTop = cursorCoords.top - windowRect.top;
+                const relativeLeft = cursorCoords.left - windowRect.left;
 
-                // Build the suggestion HTML
+                // Calculate the absolute position within the window
+                suggestionsContainer.style.position = 'absolute';
+                suggestionsContainer.style.zIndex = '10000';
+
+                // PERUBAHAN: Batasi jumlah maksimum item yang memengaruhi posisi
+                // Ini mencegah suggestion box terlalu jauh di atas saat item banyak
+                const maxDisplayItems = Math.min(5, suggestions.length); // Maksimal 5 item untuk menghitung posisi
+                const itemHeight = 25; // Perkiraan tinggi per item 25px
+                const suggestionsHeight = maxDisplayItems * itemHeight;
+
+                // Tambahkan class ke suggestionsContainer untuk membatasi tingginya
+                suggestionsContainer.style.maxHeight = '125px'; // 5 item × 25px
+                suggestionsContainer.style.overflowY = 'auto'; // Tambahkan scrollbar jika perlu
+
+                // POSISIKAN DI SEKITAR CURSOR: Pilih posisi paling nyaman
+                if (relativeTop > suggestionsHeight + 30) {
+                    // Cukup ruang di atas: tampilkan di atas kursor dengan jarak sedang
+                    suggestionsContainer.style.top = (relativeTop - suggestionsHeight - 5) + 'px';
+                } else {
+                    // Tidak cukup ruang di atas: tampilkan di bawah kursor
+                    suggestionsContainer.style.top = (relativeTop + 15) + 'px';
+                }
+
+                suggestionsContainer.style.left = relativeLeft + 'px';
+
+                // Make sure suggestions don't go off-screen on right
+                const suggestionsWidth = 200; // Approximate width of suggestion box
+                const windowWidth = windowRect.width;
+
+                if (relativeLeft + suggestionsWidth > windowWidth - 20) {
+                    // If would go off right edge, align to right side with 10px margin
+                    suggestionsContainer.style.left = 'auto';
+                    suggestionsContainer.style.right = '10px';
+                }
+
+                // Generate the HTML for suggestions
                 let suggestionHtml = suggestions.map((suggestion, index) => {
                     return `<div class="suggestion-item" data-index="${index}">${suggestion}</div>`;
                 }).join('');
@@ -470,70 +636,149 @@
                     });
                 });
 
-                // Highlight the first suggestion
+                // Highlight first suggestion
                 if (suggestionItems.length > 0) {
                     suggestionItems[0].classList.add('selected');
                 }
             }
 
-            // Function to navigate through suggestions
+            // Perbaiki fungsi applySuggestion untuk memastikan bekerja dengan benar
+            function applySuggestion() {
+                console.log("Applying suggestion");
+                const selectedItem = suggestionsContainer.querySelector('.suggestion-item.selected');
+
+                if (!selectedItem) {
+                    console.log("No selected suggestion item found");
+                    return;
+                }
+
+                const selectedSuggestion = selectedItem.textContent;
+                console.log("Selected suggestion:", selectedSuggestion);
+
+                const cursor = codeEditor.getCursor();
+                const line = codeEditor.getLine(cursor.line);
+                const textBeforeCursor = line.substring(0, cursor.ch);
+
+                // Dapatkan kata yang sedang diketik
+                const wordMatch = textBeforeCursor.match(/[a-zA-Z0-9_$]+$/);
+                if (!wordMatch) {
+                    console.log("No current word found before cursor");
+                    return;
+                }
+
+                const currentWord = wordMatch[0];
+                console.log("Current word to replace:", currentWord, "position:", cursor.ch - currentWord.length);
+
+                // Ganti kata saat ini dengan saran
+                codeEditor.replaceRange(
+                    selectedSuggestion,
+                    { line: cursor.line, ch: cursor.ch - currentWord.length },
+                    { line: cursor.line, ch: cursor.ch }
+                );
+
+                // Fokus kembali ke editor
+                codeEditor.focus();
+
+                // Sembunyikan saran
+                hideSuggestions();
+
+                console.log("Suggestion applied successfully");
+
+                // Penting: mencegah default behavior
+                return true;
+            }
+
+            // Perbaiki fungsi navigateSuggestions
             function navigateSuggestions(direction) {
+                console.log("Navigating suggestions:", direction);
                 const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                if (items.length === 0) return;
+
                 const currentIndex = [...items].findIndex(item => item.classList.contains('selected'));
 
                 let newIndex = currentIndex + direction;
                 if (newIndex < 0) newIndex = items.length - 1;
                 if (newIndex >= items.length) newIndex = 0;
 
+                // Hapus selection dari semua item
                 items.forEach(item => item.classList.remove('selected'));
+
+                // Set selected class pada item yang dipilih
                 items[newIndex].classList.add('selected');
+
+                // Scroll ke item yang dipilih jika perlu
+                const selectedItem = items[newIndex];
+                if (selectedItem) {
+                    // Scroll into view jika perlu
+                    if (selectedItem.offsetTop < suggestionsContainer.scrollTop) {
+                        suggestionsContainer.scrollTop = selectedItem.offsetTop;
+                    } else if (selectedItem.offsetTop + selectedItem.offsetHeight >
+                        suggestionsContainer.scrollTop + suggestionsContainer.clientHeight) {
+                        suggestionsContainer.scrollTop =
+                            selectedItem.offsetTop + selectedItem.offsetHeight - suggestionsContainer.clientHeight;
+                    }
+                }
+
+                console.log("Selected suggestion index:", newIndex);
+
+                // PENTING: Gunakan setTimeout untuk mengembalikan fokus ke editor
+                // tanpa memicu default behavior arrow key
+                setTimeout(() => {
+                    codeEditor.focus();
+                    // Tetapkan kursor pada posisi saat ini untuk mencegah pergerakan
+                    const cursor = codeEditor.getCursor();
+                    codeEditor.setCursor(cursor);
+                }, 0);
             }
 
-            // Function to apply the selected suggestion
-            function applySuggestion() {
-                const selectedItem = suggestionsContainer.querySelector('.suggestion-item.selected');
-                if (!selectedItem) return;
+            function findCustomVariables(code) {
+                const variables = new Set();
 
-                const cursorPos = codeTextarea.selectionStart;
-                const text = codeTextarea.value.substring(0, cursorPos);
+                // Match variable declarations (var, let, const)
+                const varRegex = /\b(?:var|let|const)\s+([a-zA-Z0-9_$]+)\b/g;
+                let match;
+                while ((match = varRegex.exec(code)) !== null) {
+                    variables.add(match[1]);
+                }
 
-                // Handle dot notation vs regular completion
-                const dotMatch = text.match(/([a-zA-Z0-9_$]+)\.([a-zA-Z0-9_$]*)$/);
-                const wordMatch = text.match(/[a-zA-Z0-9_$]+$/);
+                // Match function declarations
+                const funcRegex = /\bfunction\s+([a-zA-Z0-9_$]+)\b/g;
+                while ((match = funcRegex.exec(code)) !== null) {
+                    variables.add(match[1]);
+                }
 
-                if (!wordMatch) return;
+                // The rest of your variable detection code remains the same...
 
-                const currentWord = wordMatch[0];
-                const selectedSuggestion = selectedItem.textContent;
-
-                applySuggestionText(selectedSuggestion, currentWord);
+                return [...variables]; // Convert Set back to array
             }
 
-            // Apply the suggestion text to the editor
             function applySuggestionText(suggestion, currentWord) {
-                const cursorPos = codeTextarea.selectionStart;
-                const startPos = cursorPos - currentWord.length;
+                const cursor = codeEditor.getCursor();
+                const line = codeEditor.getLine(cursor.line);
+                const wordStartPos = cursor.ch - currentWord.length;
 
-                // Replace the current word with the suggestion
-                codeTextarea.value =
-                    codeTextarea.value.substring(0, startPos) +
-                    suggestion +
-                    codeTextarea.value.substring(cursorPos);
+                // Ganti kata saat ini dengan saran
+                codeEditor.replaceRange(
+                    suggestion,
+                    { line: cursor.line, ch: wordStartPos },
+                    { line: cursor.line, ch: cursor.ch }
+                );
 
-                // Move cursor to the end of the inserted suggestion
-                codeTextarea.selectionStart = codeTextarea.selectionEnd = startPos + suggestion.length;
-
-                // Hide suggestions
-                hideSuggestions();
-
-                // Focus back on the textarea and update line numbers
-                codeTextarea.focus();
+                // Fokus kembali ke editor dan update line numbers
+                codeEditor.focus();
                 updateLineNumbers();
+
+                // Sembunyikan saran
+                hideSuggestions();
             }
 
-            // Function to hide suggestions
+            // Perbaiki fungsi hideSuggestions untuk memastikan event tidak propagasi
             function hideSuggestions() {
+                console.log("Hiding suggestions");
                 suggestionsContainer.style.display = 'none';
+
+                // Fokus kembali ke editor
+                codeEditor.focus();
             }
 
             // Add this function to toggle comments
@@ -619,6 +864,273 @@
 
             // Initial update
             updateLineNumbers();
+
+            // Add auto-save functionality to code-editor.js
+
+            // First, add a variable to track if auto-save is enabled and the last save time
+            let saveTimeout = null;
+            const AUTO_SAVE_DELAY = 1000; // Auto-save delay in milliseconds (1 second)
+
+            // Function to handle auto-save with debounce
+            function triggerAutoSave() {
+                // Clear any pending save timeout
+                if (saveTimeout) {
+                    clearTimeout(saveTimeout);
+                }
+
+                // Set a new timeout - but don't show any status messages
+                saveTimeout = setTimeout(() => {
+                    if (options.filePath) {
+                        console.log("Auto-saving to:", options.filePath);
+                        saveFile(options.filePath, codeTextarea.value, true); // true indicates auto-save
+                    }
+                }, AUTO_SAVE_DELAY);
+            }
+
+            // Add suggestion styling
+            const styleElement = document.createElement('style');
+            styleElement.textContent = `
+            .suggestions-container {
+                position: absolute;
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 100000;
+                width: 200px;
+                font-size: 14px;
+            }
+
+            .suggestion-item {
+                padding: 5px 10px;
+                cursor: pointer;
+                font-family: monospace;
+            }
+
+            .suggestion-item:hover, .suggestion-item.selected {
+                background-color: #f0f0f0;
+            }
+
+            .suggestion-item.selected {
+                background-color: #e0e0e0;
+            }
+
+            /* Pastikan code editor container memiliki position relative agar absolute positioning bekerja dengan benar */
+            .code-editor-container {
+                position: relative;
+                overflow: hidden;
+            }
+
+            /* Pastikan suggestions container tetap di dalam window-content */
+            .window-content {
+                overflow: visible !important;
+            }
+            `;
+            document.head.appendChild(styleElement);
+
+            // Perbaikan tambahan untuk memastikan posisi suggestion container tetap up-to-date
+            codeEditor.on('cursorActivity', function () {
+                // Jika suggestion container sedang ditampilkan, perbarui posisinya
+                if (suggestionsContainer.style.display !== 'none') {
+                    // Dapatkan kata yang sedang diketik
+                    const cursor = codeEditor.getCursor();
+                    const line = codeEditor.getLine(cursor.line);
+                    const textBeforeCursor = line.substring(0, cursor.ch);
+
+                    const match = textBeforeCursor.match(/[a-zA-Z0-9_$]+$/);
+                    if (match) {
+                        const currentWord = match[0];
+                        const dotMatch = textBeforeCursor.match(/([a-zA-Z0-9_$]+)\.([a-zA-Z0-9_$]*)$/);
+
+                        // Dapatkan saran yang sedang ditampilkan
+                        const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+                        const suggestions = Array.from(suggestionItems).map(item => item.textContent);
+
+                        // Perbarui posisi tanpa mengubah konten
+                        const currentIndex = [...suggestionItems].findIndex(item => item.classList.contains('selected'));
+                        showSuggestions(suggestions, currentWord, dotMatch);
+
+                        // Kembalikan selection state jika ada
+                        if (currentIndex >= 0) {
+                            const newItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+                            if (newItems[currentIndex]) {
+                                newItems.forEach(item => item.classList.remove('selected'));
+                                newItems[currentIndex].classList.add('selected');
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Register key event handlers for CodeMirror
+            codeEditor.on("keyup", function (cm, event) {
+                // Only trigger autocompletion for letters, numbers, dots, or delete/backspace
+                if (
+                    (event.keyCode >= 65 && event.keyCode <= 90) || // A-Z
+                    (event.keyCode >= 48 && event.keyCode <= 57) || // 0-9
+                    event.keyCode === 190 || // .
+                    event.keyCode === 8 || // backspace
+                    event.keyCode === 46 // delete
+                ) {
+                    handleAutoCompletion();
+                }
+            });
+
+            // Perbaiki event handler untuk Enter di extraKeys CodeMirror
+            const updatedExtraKeys = {
+                "Ctrl-S": function (cm) {
+                    if (options.filePath) {
+                        saveFile(options.filePath, cm.getValue());
+                    } else {
+                        showSaveDialog(cm.getValue());
+                    }
+                    return true; // Mencegah default behavior
+                },
+                "Ctrl-/": function (cm) {
+                    cm.toggleComment({ lineComment: "//" });
+                    return true; // Mencegah default behavior
+                },
+                "Enter": function (cm, event) {
+                    console.log("Enter handler in extraKeys, suggestions visible:",
+                        suggestionsContainer.style.display !== 'none');
+
+                    if (suggestionsContainer.style.display !== 'none') {
+                        // Beri penanda bahwa event ini sudah ditangani
+                        event.codemirrorIgnore = true;
+                        applySuggestion();
+                        // Kembalikan false agar CodeMirror tidak memproses Enter lebih lanjut
+                        return false;
+                    }
+                    // Kembalikan undefined agar default behavior tetap berjalan
+                    return undefined;
+                },
+                // Tambahkan handler untuk ESC key
+                "Esc": function (cm, event) {
+                    console.log("Escape handler in extraKeys, suggestions visible:",
+                        suggestionsContainer.style.display !== 'none');
+
+                    if (suggestionsContainer.style.display !== 'none') {
+                        // Hanya sembunyikan suggestion box dan cegah event propagasi
+                        hideSuggestions();
+                        event.preventDefault();
+                        event.stopPropagation();
+                        // Penting: return false untuk mencegah ESC ditangkap oleh window manager
+                        return false;
+                    }
+                    // Biarkan ESC normal jika tidak ada suggestion
+                    return CodeMirror.Pass;
+                },
+                // Tambahkan handler untuk arrow keys
+                "Up": function (cm, event) {
+                    if (suggestionsContainer.style.display !== 'none') {
+                        console.log("Arrow Up intercepted for suggestions");
+                        event.preventDefault();
+                        navigateSuggestions(-1); // Navigasi ke atas
+                        return false; // Penting: mencegah default behavior
+                    }
+                    return CodeMirror.Pass; // Biarkan default jika tidak ada suggestion
+                },
+                "Down": function (cm, event) {
+                    if (suggestionsContainer.style.display !== 'none') {
+                        console.log("Arrow Down intercepted for suggestions");
+                        event.preventDefault();
+                        navigateSuggestions(1); // Navigasi ke bawah
+                        return false; // Penting: mencegah default behavior
+                    }
+                    return CodeMirror.Pass; // Biarkan default jika tidak ada suggestion
+                }
+            };
+
+            // Terapkan extraKeys baru
+            codeEditor.setOption("extraKeys", updatedExtraKeys);
+
+            // Tambahkan event listener tambahan untuk memastikan applySuggestion terpanggil
+            suggestionsContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('suggestion-item')) {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+
+                    // Pilih item yang diklik
+                    suggestionItems.forEach(item => item.classList.remove('selected'));
+                    e.target.classList.add('selected');
+
+                    // Terapkan suggestion
+                    applySuggestion();
+                }
+            });
+
+            // Tambahkan event listener alternatif untuk Enter jika extraKeys tidak cukup
+            codeEditor.getWrapperElement().addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && suggestionsContainer.style.display !== 'none') {
+                    console.log("Enter caught by direct event listener");
+                    e.preventDefault();
+                    e.stopPropagation();
+                    applySuggestion();
+                    return false;
+                }
+            }, true); // true untuk fase capturing, menangkap event sebelum sampai ke CodeMirror
+
+            // 2. Tambahkan juga event listener khusus dengan prioritas tinggi untuk ESC
+            codeEditor.getInputField().addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && suggestionsContainer.style.display !== 'none') {
+                    console.log("ESC intercepted at input field level!");
+                    event.preventDefault();
+                    event.stopPropagation();
+                    hideSuggestions();
+                    return false;
+                }
+            }, true); // true untuk fase capturing
+
+            // 2. Tambahkan juga event listener khusus untuk arrow keys dengan prioritas tinggi
+            codeEditor.getInputField().addEventListener('keydown', function (event) {
+                if (suggestionsContainer.style.display !== 'none') {
+                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        console.log("Arrow key intercepted at input field level:", event.key);
+                        event.preventDefault();
+                        event.stopImmediatePropagation(); // Ini lebih kuat daripada stopPropagation
+                        navigateSuggestions(event.key === 'ArrowDown' ? 1 : -1);
+                        return false;
+                    }
+                }
+            }, true); // true untuk fase capturing
+
+            // Tambahkan handler dengan prioritas lebih tinggi pada wrapper element
+            codeEditor.getWrapperElement().addEventListener('keydown', function (event) {
+                if (suggestionsContainer.style.display !== 'none') {
+                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        console.log("Arrow key intercepted at wrapper level:", event.key);
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        navigateSuggestions(event.key === 'ArrowDown' ? 1 : -1);
+                        return false;
+                    }
+                }
+            }, true);
+
+            // Tambahkan override global untuk arrow keys sebagai jaring pengaman terakhir
+            document.addEventListener('keydown', function (event) {
+                // Cek apakah ada suggestion box yang ditampilkan
+                const visibleSuggestionBox = document.querySelector('.suggestions-container[style*="display: block"]');
+
+                if (visibleSuggestionBox && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                    // Cek apakah target dalam CodeMirror
+                    if (event.target.closest('.CodeMirror')) {
+                        console.log("Arrow key captured at document level:", event.key);
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        // Temukan editor yang sedang aktif
+                        const activeEditor = document.querySelector('.CodeMirror-focused').CodeMirror;
+                        if (activeEditor) {
+                            navigateSuggestions(event.key === 'ArrowDown' ? 1 : -1);
+                        }
+
+                        return false;
+                    }
+                }
+            }, true);
         },
 
         // Method to get the current code from this editor
@@ -627,4 +1139,23 @@
             return textarea ? textarea.value : '';
         }
     });
+
+    // Tambahkan event listener pada window untuk menangkap ESC sebelum window manager
+    document.addEventListener('keydown', function (event) {
+        // Cek jika ESC ditekan dan suggestion box muncul
+        if (event.key === 'Escape' &&
+            document.querySelector('.suggestions-container') &&
+            document.querySelector('.suggestions-container').style.display !== 'none') {
+
+            console.log("ESC captured at document level to prevent window close");
+            event.stopPropagation();
+
+            // Tangani suggestion hide di level terendah
+            const suggestionsContainer = document.querySelector('.suggestions-container');
+            suggestionsContainer.style.display = 'none';
+
+            event.preventDefault();
+            return false;
+        }
+    }, true); // true untuk fase capturing
 })();
