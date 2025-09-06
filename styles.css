@@ -13,7 +13,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 50px; /* Space for the dock */
+  bottom: 0; /* Space for the dock */
   overflow: hidden;
 }
 
