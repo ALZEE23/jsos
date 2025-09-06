@@ -3,6 +3,34 @@
     // Make sure to include FileSystem.js in your HTML before terminal.js
     const fs = FileSystem;
 
+    // Tambahkan namespace untuk Terminal App dan fungsi blurFocus
+
+    // Di awal file, tambahkan:
+    window.TerminalApp = {
+        // Menyimpan referensi ke terminal input berdasarkan ID window
+        inputs: {},
+
+        // Fungsi untuk menghilangkan fokus dari terminal
+        blurFocus: function (windowId) {
+            console.log("[Terminal] Blurring focus for window:", windowId);
+
+            // Jika terminal ini memiliki input yang terdaftar
+            const input = this.inputs[windowId];
+            if (input) {
+                try {
+                    // Hilangkan fokus dari input terminal
+                    input.blur();
+                    console.log("[Terminal] Input blurred successfully");
+
+                    // Pindahkan fokus ke window body untuk memastikan
+                    document.body.focus();
+                } catch (e) {
+                    console.warn("[Terminal] Error blurring terminal input:", e);
+                }
+            }
+        }
+    };
+
     WindowManager.registerWindowType('terminal', {
         title: 'Terminal',
         defaultWidth: 500,
@@ -32,6 +60,9 @@
             const terminalInput = innerContent.querySelector('.terminal-input');
             const terminalPrompt = innerContent.querySelector('.terminal-prompt');
             const terminalForeshadow = innerContent.querySelector('.terminal-foreshadow');
+
+            // Tambahkan input ini ke daftar TerminalApp.inputs
+            window.TerminalApp.inputs[contentElement.closest('.window').id] = terminalInput;
 
             // Add CSS for foreshadow
             const style = document.createElement('style');
@@ -143,6 +174,26 @@
             // Keep focus on input when clicking anywhere in the terminal
             innerContent.addEventListener('click', () => {
                 terminalInput.focus();
+            });
+
+            // Tambahkan event listener untuk Ctrl+Alt+K
+
+            // Di bagian initContent, setelah mendapatkan reference terminalInput
+            terminalInput.addEventListener('keydown', function (e) {
+                // Tangani Ctrl+Alt+K langsung di level input terminal
+                if (e.ctrlKey && e.altKey && (e.key === 'k' || e.key === 'K')) {
+                    console.log("[Terminal] Ctrl+Alt+K detected - releasing focus");
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Lepaskan fokus dari input
+                    this.blur();
+
+                    // Fokus ke body
+                    document.body.focus();
+
+                    return false;
+                }
             });
 
             // Functions

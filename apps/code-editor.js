@@ -1,4 +1,40 @@
 (function () {
+    // Tambahkan namespace untuk Code Editor App dan fungsi blurFocus
+
+    // Di awal file, tambahkan:
+    window.CodeEditorApp = {
+        // Menyimpan referensi ke CodeMirror instances berdasarkan ID window
+        editors: {},
+
+        // Fungsi untuk menghilangkan fokus dari editor
+        blurFocus: function (windowId) {
+            console.log("[CodeEditor] Blurring focus for window:", windowId);
+
+            // Jika editor ini memiliki instance yang terdaftar
+            const editor = this.editors[windowId];
+            if (editor) {
+                try {
+                    // Lepaskan fokus dari editor
+                    if (editor.getInputField) {
+                        editor.getInputField().blur();
+                    }
+
+                    // Alternatif lain untuk memastikan fokus hilang
+                    if (editor.display && editor.display.input) {
+                        editor.display.input.blur();
+                    }
+
+                    console.log("[CodeEditor] Editor blurred successfully");
+
+                    // Pindahkan fokus ke window body untuk memastikan
+                    document.body.focus();
+                } catch (e) {
+                    console.warn("[CodeEditor] Error blurring code editor:", e);
+                }
+            }
+        }
+    };
+
     WindowManager.registerWindowType('code-editor', {
         title: function (options) {
             // Use the file path for the title if available
@@ -73,6 +109,9 @@
                 viewportMargin: Infinity,
                 extraKeys: cmExtraKeys  // Gunakan variabel yang sudah didefinisikan
             });
+
+            // Tambahkan editor ini ke daftar CodeEditorApp.editors
+            window.CodeEditorApp.editors[contentElement.closest('.window').id] = codeEditor;
 
             // 1. Tambahkan callback untuk menangani keydown event dengan prioritas tinggi
             // Tambahkan ini sebelum Anda mengatur extraKeys
@@ -1133,6 +1172,26 @@
                     }
                 }
             }, true);
+
+            // Tambahkan event listener untuk Ctrl+Alt+K
+
+            // Di bagian setelah inisialisasi CodeMirror, tambahkan:
+            codeEditor.on('keydown', function (cm, event) {
+                // Tangani Ctrl+Alt+K langsung di level CodeMirror
+                if (event.ctrlKey && event.altKey && (event.key === 'k' || event.key === 'K')) {
+                    console.log("[CodeEditor] Ctrl+Alt+K detected - releasing focus");
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    // Lepaskan fokus dari editor
+                    cm.getInputField().blur();
+
+                    // Fokus ke body
+                    document.body.focus();
+
+                    return false;
+                }
+            });
         },
 
         // Method to get the current code from this editor

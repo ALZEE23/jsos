@@ -31,6 +31,26 @@ const WindowManager = {
                     this.closeWindow(focusedWindow);
                 }
             }
+
+            // Tambahkan handler untuk Ctrl+Alt+K di level window manager
+            if (e.ctrlKey && e.altKey && (e.key === 'k' || e.key === 'K')) {
+                console.log("[WindowManager] Ctrl+Alt+K detected - releasing focus");
+
+                // Coba panggil fungsi global blurAllFocus jika tersedia
+                if (window.KeyBindManager && window.KeyBindManager.blurAllFocus) {
+                    window.KeyBindManager.blurAllFocus();
+                } else {
+                    // Fallback manual jika tidak tersedia
+                    if (document.activeElement && document.activeElement !== document.body) {
+                        document.activeElement.blur();
+                    }
+                    document.body.focus();
+                }
+
+                // Hindari propagasi event lebih jauh
+                e.preventDefault();
+                e.stopPropagation();
+            }
         });
     },
 
@@ -419,5 +439,195 @@ const WindowManager = {
             document.onmouseup = null;
             document.onmousemove = null;
         }
-    }
+    },
+
+    // Cycle through windows (for Ctrl+Tab support)
+    cycleWindows() {
+        console.log("Cycling through windows...");
+
+        // Get all windows
+        const windows = document.querySelectorAll('.window');
+        if (windows.length <= 1) {
+            console.log("Less than 2 windows found, nothing to cycle");
+            return;
+        }
+
+        // Find the current focused window
+        const currentFocused = document.querySelector('.window-focused');
+        if (!currentFocused) {
+            // If no window is focused, focus the first one
+            console.log("No focused window found, focusing the first window");
+            this.focusWindow(windows[0]);
+            return;
+        }
+
+        // PERBAIKAN: Panggil blurFocus pada window aktif sebelum berpindah
+        const appType = currentFocused.getAttribute('data-app-type');
+        const windowId = currentFocused.id;
+
+        // Panggil fungsi blurFocus berdasarkan jenis aplikasi
+        if (appType === 'terminal') {
+            if (typeof window.TerminalApp !== 'undefined' &&
+                typeof window.TerminalApp.blurFocus === 'function') {
+                window.TerminalApp.blurFocus(windowId);
+            }
+        }
+        else if (appType === 'code-editor') {
+            if (typeof window.CodeEditorApp !== 'undefined' &&
+                typeof window.CodeEditorApp.blurFocus === 'function') {
+                window.CodeEditorApp.blurFocus(windowId);
+            }
+        }
+
+        // Untuk aplikasi lain yang mungkin memiliki blurFocus
+        const appName = appType.split('-').map(word =>
+            word.charAt(0).toUpperCase() + word.slice(1)).join('') + 'App';
+
+        if (typeof window[appName] !== 'undefined' &&
+            typeof window[appName].blurFocus === 'function') {
+            window[appName].blurFocus(windowId);
+        }
+
+        // Find index of currently focused window
+        const windowArray = Array.from(windows);
+        const currentIndex = windowArray.indexOf(currentFocused);
+
+        // Calculate next window index (with wrap-around)
+        const nextIndex = (currentIndex + 1) % windowArray.length;
+        const nextWindow = windowArray[nextIndex];
+
+        // Focus the next window
+        console.log(`Cycling from window ${currentIndex} to window ${nextIndex}`);
+        this.focusWindow(nextWindow);
+        this.focusCursorInWindow(nextWindow);
+    },
+
+    // New function to focus cursor in interactive windows
+    focusCursorInWindow(windowElement) {
+        if (!windowElement) return;
+
+        // Get window type
+        const appType = windowElement.getAttribute('data-app-type');
+        console.log(`Focusing cursor in ${appType} window`);
+
+        // PERBAIKAN: Tambahkan delay yang lebih panjang dan coba beberapa kali
+        const attemptFocus = (attempt = 0) => {
+            try {
+                console.log(`Focus attempt ${attempt + 1} for ${appType}`);
+
+                // PERBAIKAN: Aktifkan windowElement dahulu untuk memastikan fokus
+                windowElement.click();
+
+                let focused = false;
+
+                // For terminal windows
+                if (appType === 'terminal') {
+                    // Try to find terminal input
+                    const terminalInput = windowElement.querySelector('.terminal-input');
+                    if (terminalInput) {
+                        terminalInput.focus();
+                        terminalInput.click(); // Tambahan untuk memastikan fokus
+                        console.log('Terminal input focused');
+                        focused = true;
+                    }
+
+                    // Alternative: try contenteditable element
+                    if (!focused) {
+                        const editableElem = windowElement.querySelector('[contenteditable="true"]');
+                        if (editableElem) {
+                            editableElem.focus();
+                            editableElem.click(); // Tambahan untuk memastikan fokus
+                            console.log('Terminal editable element focused');
+                            focused = true;
+                        }
+                    }
+
+                    // Alternative: try any input field in the terminal
+                    if (!focused) {
+                        const anyInput = windowElement.querySelector('input[type="text"], textarea');
+                        if (anyInput) {
+                            anyInput.focus();
+                            anyInput.click(); // Tambahan untuk memastikan fokus
+                            console.log('Terminal input field focused');
+                            focused = true;
+                        }
+                    }
+                }
+
+                // For code editor windows
+                else if (appType === 'code-editor') {
+                    // Try to find CodeMirror editor
+                    const cmEditor = windowElement.querySelector('.CodeMirror');
+                    if (cmEditor && cmEditor.CodeMirror) {
+                        cmEditor.CodeMirror.focus();
+                        console.log('CodeMirror editor focused');
+                        focused = true;
+                    }
+
+                    // Alternative: monaco editor
+                    if (!focused) {
+                        const monacoEditor = windowElement.querySelector('.monaco-editor');
+                        if (monacoEditor && window.monaco) {
+                            // Find the editor instance for this DOM element
+                            for (const editorInstance of window.monaco.editor.getEditors()) {
+                                if (monacoEditor.contains(editorInstance.getDomNode())) {
+                                    editorInstance.focus();
+                                    console.log('Monaco editor focused');
+                                    focused = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Alternative: textarea editor
+                    if (!focused) {
+                        const editorTextarea = windowElement.querySelector('textarea.editor');
+                        if (editorTextarea) {
+                            editorTextarea.focus();
+                            editorTextarea.click(); // Tambahan untuk memastikan fokus
+                            console.log('Editor textarea focused');
+                            focused = true;
+                        }
+                    }
+
+                    // Alternative: any editable element
+                    if (!focused) {
+                        const editableArea = windowElement.querySelector('[contenteditable="true"], textarea');
+                        if (editableArea) {
+                            editableArea.focus();
+                            editableArea.click(); // Tambahan untuk memastikan fokus
+                            console.log('Editor area focused');
+                            focused = true;
+                        }
+                    }
+                }
+
+                // For other apps with text input capability
+                else if (!focused) {
+                    // Try to find primary input in the window
+                    const primaryInput = windowElement.querySelector('input:not([type="hidden"]), textarea, [contenteditable="true"]');
+                    if (primaryInput) {
+                        primaryInput.focus();
+                        primaryInput.click(); // Tambahan untuk memastikan fokus
+                        console.log('Input focused in window');
+                        focused = true;
+                    }
+                }
+
+                // PERBAIKAN: Jika masih belum berhasil dan masih ada percobaan tersisa, coba lagi
+                if (!focused && attempt < 2) {
+                    setTimeout(() => attemptFocus(attempt + 1), 100);
+                }
+            } catch (err) {
+                console.error('Error focusing cursor in window:', err);
+            }
+        };
+
+        // Mulai percobaan fokus dengan delay
+        setTimeout(() => attemptFocus(), 100);
+    },
 };
+
+// Pastikan WindowManager tersedia secara global
+window.WindowManager = WindowManager;
